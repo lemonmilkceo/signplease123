@@ -8,7 +8,7 @@ const mockContract = {
   workerName: "김알바",
   workPlace: "스타벅스 강남점",
   hourlyWage: "10000",
-  startDate: "2024-02-01",
+  startDate: "2026-02-01",
   workDays: ["월", "화", "수"],
   workStartTime: "09:00",
   workEndTime: "18:00",
@@ -18,7 +18,7 @@ const mockContract = {
   status: "completed",
   employerSigned: true,
   workerSigned: true,
-  createdAt: "2024-01-25",
+  createdAt: "2026-01-25",
 };
 
 export default function ContractDetail() {

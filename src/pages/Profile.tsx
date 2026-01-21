@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
+import { supabase } from "../lib/supabase";
 
 interface UserProfile {
   name: string;
@@ -14,25 +15,105 @@ interface UserProfile {
 export default function Profile() {
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile>({
-    name: "홍길동",
-    email: "hong@example.com",
-    phone: "010-1234-5678",
+    name: "",
+    email: "",
+    phone: "",
     role: "employer",
-    bankName: "카카오뱅크",
-    accountNumber: "3333-01-1234567",
+    bankName: "",
+    accountNumber: "",
   });
 
-  const handleSave = () => {
-    setIsEditing(false);
-    alert("프로필이 저장되었습니다.");
+  // 프로필 데이터 로드
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          navigate("/login");
+          return;
+        }
+
+        const { data: profileData, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        if (error) {
+          console.error("Profile load error:", error);
+          return;
+        }
+
+        if (profileData) {
+          setProfile({
+            name: profileData.name || "",
+            email: profileData.email || user.email || "",
+            phone: profileData.phone || "",
+            role: profileData.role || "employer",
+            bankName: profileData.bank_name || "",
+            accountNumber: profileData.account_number || "",
+          });
+        }
+      } catch (err) {
+        console.error("Error loading profile:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [navigate]);
+
+  const handleSave = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        alert("로그인이 필요합니다");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          name: profile.name,
+          phone: profile.phone,
+          bank_name: profile.bankName,
+          account_number: profile.accountNumber,
+        })
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("Profile update error:", error);
+        alert("프로필 저장에 실패했습니다");
+        return;
+      }
+
+      setIsEditing(false);
+      alert("프로필이 저장되었습니다.");
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      alert("오류가 발생했습니다");
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (confirm("로그아웃 하시겠습니까?")) {
+      await supabase.auth.signOut();
       navigate("/");
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground">로딩 중...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

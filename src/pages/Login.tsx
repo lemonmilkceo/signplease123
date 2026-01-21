@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
+import { supabase } from "../lib/supabase";
 
 function Login() {
   const navigate = useNavigate();
@@ -9,16 +10,57 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
     
-    // TODO: Supabase 로그인 연동
-    setTimeout(() => {
+    try {
+      // 전화번호인지 이메일인지 판별
+      const isPhone = /^[0-9-]+$/.test(identifier.replace(/\s/g, ""));
+      const email = isPhone 
+        ? `${identifier.replace(/\D/g, "")}@signplease.app`
+        : identifier.trim();
+      
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        console.error("Login error:", authError);
+        if (authError.message.includes("Invalid login credentials")) {
+          setError("이메일/전화번호 또는 비밀번호가 올바르지 않습니다");
+        } else {
+          setError(`로그인 실패: ${authError.message}`);
+        }
+        return;
+      }
+
+      if (data.user) {
+        // 프로필에서 역할 확인
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", data.user.id)
+          .single();
+
+        if (profile?.role) {
+          // 이미 역할이 설정되어 있으면 해당 대시보드로 이동
+          navigate(profile.role === "employer" ? "/employer" : "/worker");
+        } else {
+          // 역할이 없으면 역할 선택 페이지로
+          navigate("/select-role");
+        }
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("로그인 중 오류가 발생했습니다");
+    } finally {
       setIsLoading(false);
-      navigate("/select-role");
-    }, 1000);
+    }
   };
 
   return (
@@ -44,6 +86,13 @@ function Login() {
           <p className="text-body text-muted-foreground mb-8">계정에 로그인하세요</p>
           
           <form onSubmit={handleLogin} className="space-y-4">
+            {/* 에러 메시지 */}
+            {error && (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-caption">
+                {error}
+              </div>
+            )}
+            
             {/* 전화번호/이메일 입력 */}
             <Input
               type="text"

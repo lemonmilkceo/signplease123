@@ -19,12 +19,12 @@ interface AllowanceCalculatorProps {
 }
 
 const DAYS_OF_WEEK = ["월", "화", "수", "목", "금", "토", "일"];
-const MINIMUM_WAGE_2024 = 9860;
+const MINIMUM_WAGE_2026 = 10360;
 
 export default function AllowanceCalculator({
   isOpen,
   onClose,
-  initialHourlyWage = MINIMUM_WAGE_2024,
+  initialHourlyWage = MINIMUM_WAGE_2026,
   initialWorkDays = ["월", "화", "수", "목", "금"],
   initialWorkStartTime = "09:00",
   initialWorkEndTime = "18:00",
@@ -170,7 +170,7 @@ export default function AllowanceCalculator({
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">원</span>
             </div>
             <p className="text-caption text-muted-foreground">
-              2024년 최저시급: {MINIMUM_WAGE_2024.toLocaleString()}원
+              2026년 최저시급: {MINIMUM_WAGE_2026.toLocaleString()}원
             </p>
           </div>
 

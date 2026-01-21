@@ -17,7 +17,7 @@ const mockCareerHistory: CareerItem[] = [
     id: "1",
     workPlace: "스타벅스 강남점",
     employerName: "김사장",
-    startDate: "2024-01-01",
+    startDate: "2026-01-01",
     endDate: null,
     totalHours: 120,
     totalEarnings: 1200000,

@@ -11,9 +11,6 @@ interface Payment {
 
 // Mock 데이터
 const mockPayments: Payment[] = [
-  { id: "1", date: "2024-01-25", description: "베이직 패키지 (15 크레딧)", amount: 12000, status: "completed", icon: "📝" },
-  { id: "2", date: "2024-01-15", description: "AI 법률 검토 5회", amount: 12000, status: "completed", icon: "🤖" },
-  { id: "3", date: "2024-01-10", description: "스타터 패키지 (5 크레딧)", amount: 5000, status: "completed", icon: "🌱" },
 ];
 
 export default function PaymentHistory() {

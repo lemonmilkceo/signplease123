@@ -17,7 +17,7 @@ const mockContract = {
   employerName: "김사장",
   workPlace: "스타벅스 강남점",
   hourlyWage: "10000",
-  startDate: "2024-02-01",
+  startDate: "2026-02-01",
   workDays: ["월", "화", "수", "목", "금"],
   workStartTime: "09:00",
   workEndTime: "18:00",
@@ -30,7 +30,7 @@ const mockContract = {
 
 const contractTerms: ContractTerm[] = [
   { id: "1", title: "근무 장소", value: mockContract.workPlace, icon: "📍" },
-  { id: "2", title: "시급", value: `${parseInt(mockContract.hourlyWage).toLocaleString()}원`, explanation: "시급은 근무 시간당 받는 급여입니다. 2024년 최저시급은 9,860원입니다.", icon: "💰" },
+  { id: "2", title: "시급", value: `${parseInt(mockContract.hourlyWage).toLocaleString()}원`, explanation: "시급은 근무 시간당 받는 급여입니다. 2026년 최저시급은 10,360원입니다.", icon: "💰" },
   { id: "3", title: "근무 시작일", value: mockContract.startDate, icon: "📅" },
   { id: "4", title: "근무 요일", value: mockContract.workDays.join(", "), icon: "🗓️" },
   { id: "5", title: "근무 시간", value: `${mockContract.workStartTime} ~ ${mockContract.workEndTime}`, explanation: "하루 8시간, 주 40시간을 초과하면 연장근로수당이 발생합니다.", icon: "⏰" },

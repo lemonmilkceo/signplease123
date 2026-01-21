@@ -82,7 +82,7 @@ export default function Terms() {
       {/* 하단 */}
       <div className="p-4 border-t border-border bg-background">
         <p className="text-caption text-muted-foreground text-center">
-          최종 수정일: 2024년 1월 1일
+          최종 수정일: 2026년 1월 1일
         </p>
       </div>
     </div>

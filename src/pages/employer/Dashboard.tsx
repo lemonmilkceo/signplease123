@@ -14,12 +14,8 @@ interface Contract {
   createdAt: string;
 }
 
-// Mock 데이터 (테스트용)
-const mockContracts: Contract[] = [
-  { id: "1", workerName: "김알바", workPlace: "스타벅스 강남점", hourlyWage: "10000", status: "pending", createdAt: "2024-01-20" },
-  { id: "2", workerName: "이직원", workPlace: "GS25 역삼점", hourlyWage: "9860", status: "completed", createdAt: "2024-01-18" },
-  { id: "3", workerName: "박아르바이트", workPlace: "맥도날드 선릉점", hourlyWage: "11000", status: "pending", createdAt: "2024-01-15" },
-];
+// 실제 데이터는 useContracts 훅에서 가져옴 (현재는 빈 배열)
+const mockContracts: Contract[] = [];
 
 export default function EmployerDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("pending");

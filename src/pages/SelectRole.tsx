@@ -1,17 +1,58 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
 type Role = "employer" | "worker" | null;
 
 function SelectRole() {
   const navigate = useNavigate();
   const [selectedRole, setSelectedRole] = useState<Role>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleContinue = () => {
-    if (selectedRole === "employer") {
-      navigate("/employer");
-    } else if (selectedRole === "worker") {
-      navigate("/worker/onboarding");
+  const handleContinue = async () => {
+    if (!selectedRole) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // 현재 로그인된 사용자 확인
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        // 로그인되지 않은 경우 (둘러보기 모드)
+        if (selectedRole === "employer") {
+          navigate("/employer");
+        } else {
+          navigate("/worker/onboarding");
+        }
+        return;
+      }
+      
+      // 프로필에 역할 저장
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ role: selectedRole })
+        .eq("id", user.id);
+      
+      if (updateError) {
+        console.error("Role update error:", updateError);
+        setError("역할 저장에 실패했습니다. 다시 시도해주세요.");
+        return;
+      }
+      
+      // 역할에 따라 대시보드로 이동
+      if (selectedRole === "employer") {
+        navigate("/employer");
+      } else {
+        navigate("/worker/onboarding");
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      setError("오류가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -33,6 +74,13 @@ function SelectRole() {
       {/* 컨텐츠 */}
       <div className="flex-1 p-6 flex flex-col">
         <div className="animate-slide-up opacity-0" style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}>
+          {/* 에러 메시지 */}
+          {error && (
+            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-caption">
+              {error}
+            </div>
+          )}
+          
           {/* 안내 메시지 */}
           <div className="text-center mb-8">
             <h2 className="text-title text-foreground mb-2">어떤 역할로 시작할까요?</h2>
@@ -139,14 +187,14 @@ function SelectRole() {
         <div className="mt-auto pt-8">
           <button
             onClick={handleContinue}
-            disabled={!selectedRole}
+            disabled={!selectedRole || isLoading}
             className={`w-full py-4 rounded-xl text-body-lg font-semibold transition-all duration-200 ${
-              selectedRole
+              selectedRole && !isLoading
                 ? "bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98]"
                 : "bg-secondary text-muted-foreground cursor-not-allowed"
             }`}
           >
-            {selectedRole ? "시작하기" : "역할을 선택해주세요"}
+            {isLoading ? "저장 중..." : selectedRole ? "시작하기" : "역할을 선택해주세요"}
           </button>
         </div>
       </div>

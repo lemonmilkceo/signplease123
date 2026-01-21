@@ -14,8 +14,6 @@ interface Contract {
 
 // Mock 데이터
 const mockContracts: Contract[] = [
-  { id: "1", employerName: "김사장", workPlace: "스타벅스 강남점", hourlyWage: "10000", status: "pending", createdAt: "2024-01-25" },
-  { id: "2", employerName: "이대표", workPlace: "투썸플레이스 역삼점", hourlyWage: "9860", status: "completed", createdAt: "2024-01-20" },
 ];
 
 export default function WorkerDashboard() {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
+import { supabase } from "../lib/supabase";
 
 interface FormData {
   name: string;
@@ -60,6 +61,11 @@ function Signup() {
       setError("올바른 핸드폰번호를 입력해주세요");
       return false;
     }
+    // 이메일이 입력된 경우에만 이메일 형식 검증
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      setError("올바른 이메일 형식을 입력해주세요");
+      return false;
+    }
     if (!formData.password || formData.password.length < 6) {
       setError("비밀번호는 6자 이상이어야 합니다");
       return false;
@@ -75,14 +81,63 @@ function Signup() {
     if (!validateForm()) return;
 
     setIsLoading(true);
+    setError(null);
+    
     try {
-      // TODO: Supabase 회원가입 연동
-      setTimeout(() => {
-        setIsLoading(false);
+      // 이메일이 없으면 전화번호 기반 가상 이메일 생성
+      const authEmail = formData.email.trim() || `${formData.phone.replace(/\D/g, "")}@signplease.app`;
+      
+      // Supabase Auth 회원가입
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: authEmail,
+        password: formData.password,
+        options: {
+          data: {
+            name: formData.name,
+            phone: formData.phone,
+            gender: formData.gender,
+            birth_date: formData.birthDate,
+          },
+        },
+      });
+
+      if (authError) {
+        console.error("Auth error:", authError);
+        if (authError.message.includes("already registered")) {
+          setError("이미 가입된 사용자입니다");
+        } else if (authError.message.includes("Invalid email")) {
+          setError("유효하지 않은 이메일입니다");
+        } else {
+          setError(`회원가입 실패: ${authError.message}`);
+        }
+        return;
+      }
+
+      if (authData.user) {
+        // 프로필 업데이트 (트리거로 기본 프로필이 생성됨)
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({
+            name: formData.name,
+            gender: formData.gender,
+            birth_date: formData.birthDate,
+            phone: formData.phone,
+            email: formData.email.trim() || null,
+          })
+          .eq("id", authData.user.id);
+
+        if (profileError) {
+          console.error("Profile update error:", profileError);
+          // 프로필 업데이트 실패해도 회원가입은 성공으로 처리
+        }
+
+        // 역할 선택 페이지로 이동
         navigate("/select-role");
-      }, 1000);
+      }
     } catch (err) {
+      console.error("Signup error:", err);
       setError("회원가입 중 오류가 발생했습니다");
+    } finally {
       setIsLoading(false);
     }
   };

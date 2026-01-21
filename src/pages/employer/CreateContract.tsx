@@ -72,7 +72,7 @@ export default function CreateContract() {
       case "worker-name":
         return data.workerName.trim().length > 0;
       case "hourly-wage":
-        return data.hourlyWage.length > 0 && parseInt(data.hourlyWage) >= 9860;
+        return data.hourlyWage.length > 0 && parseInt(data.hourlyWage) >= 10360;
       case "start-date":
         return data.startDate.length > 0;
       case "work-days":
@@ -231,18 +231,18 @@ export default function CreateContract() {
           {step === "hourly-wage" && (
             <div>
               <h2 className="text-title text-foreground mb-2">시급은 얼마로 정하셨나요?</h2>
-              <p className="text-body text-muted-foreground mb-6">2024년 최저시급은 9,860원입니다.</p>
+              <p className="text-body text-muted-foreground mb-6">2026년 최저시급은 10,360원입니다.</p>
               <div className="relative">
                 <Input
                   type="number"
                   value={data.hourlyWage}
                   onChange={(e) => setData({ ...data, hourlyWage: e.target.value })}
-                  placeholder="9860"
+                  placeholder="10360"
                   autoFocus
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">원</span>
               </div>
-              {data.hourlyWage && parseInt(data.hourlyWage) < 9860 && (
+              {data.hourlyWage && parseInt(data.hourlyWage) < 10360 && (
                 <p className="text-destructive text-caption mt-2 flex items-center gap-1">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -250,7 +250,7 @@ export default function CreateContract() {
                   최저시급 미만입니다.
                 </p>
               )}
-              {data.hourlyWage && parseInt(data.hourlyWage) >= 9860 && (
+              {data.hourlyWage && parseInt(data.hourlyWage) >= 10360 && (
                 <div className="mt-4 p-4 bg-success/10 rounded-xl">
                   <p className="text-caption text-success font-medium">
                     예상 월급 (주 40시간 기준): {(parseInt(data.hourlyWage) * 209).toLocaleString()}원
@@ -430,7 +430,7 @@ export default function CreateContract() {
       <AllowanceCalculator
         isOpen={showCalculator}
         onClose={() => setShowCalculator(false)}
-        initialHourlyWage={parseInt(data.hourlyWage) || 9860}
+        initialHourlyWage={parseInt(data.hourlyWage) || 10360}
         initialWorkDays={data.workDays.length > 0 ? data.workDays : ["월", "화", "수", "목", "금"]}
         initialWorkStartTime={data.workStartTime || "09:00"}
         initialWorkEndTime={data.workEndTime || "18:00"}
