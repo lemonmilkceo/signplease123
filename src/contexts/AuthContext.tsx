@@ -161,11 +161,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 초기 세션 확인
   useEffect(() => {
+    let isMounted = true; // 언마운트 시 상태 업데이트 방지
+    
     const initAuth = async () => {
       try {
         dispatch({ type: "AUTH_LOADING" });
 
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        // AbortError 무시 (React Strict Mode에서 발생)
+        if (error && error.name === "AbortError") {
+          logger.debug("Auth init aborted (Strict Mode)");
+          return;
+        }
+
+        if (!isMounted) return;
 
         if (session?.user) {
           dispatch({
@@ -174,16 +184,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
 
           const profile = await fetchProfile(session.user.id);
-          dispatch({ type: "PROFILE_LOADED", payload: profile });
+          if (isMounted) {
+            dispatch({ type: "PROFILE_LOADED", payload: profile });
+          }
         } else {
           dispatch({ type: "SET_LOADING", payload: false });
         }
       } catch (error) {
+        // AbortError는 무시 (React Strict Mode에서 정상 동작)
+        if (error instanceof Error && error.name === "AbortError") {
+          logger.debug("Auth init aborted (Strict Mode)");
+          return;
+        }
+        
         logger.error("Error initializing auth:", error);
-        dispatch({
-          type: "AUTH_ERROR",
-          payload: "인증 초기화에 실패했습니다",
-        });
+        if (isMounted) {
+          dispatch({
+            type: "AUTH_ERROR",
+            payload: "인증 초기화에 실패했습니다",
+          });
+        }
       }
     };
 
@@ -192,6 +212,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Auth 상태 변경 리스너
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!isMounted) return;
+        
         logger.info("Auth state changed:", event);
 
         if (session?.user) {
@@ -201,7 +223,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
 
           const profile = await fetchProfile(session.user.id);
-          dispatch({ type: "PROFILE_LOADED", payload: profile });
+          if (isMounted) {
+            dispatch({ type: "PROFILE_LOADED", payload: profile });
+          }
         } else {
           dispatch({ type: "AUTH_LOGOUT" });
         }
@@ -209,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, [fetchProfile]);

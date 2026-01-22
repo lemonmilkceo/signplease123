@@ -109,8 +109,14 @@ export const SUCCESS_MESSAGES = {
 export function translateAuthError(errorMessage: string): string {
   const lowerMessage = errorMessage.toLowerCase();
   
-  if (lowerMessage.includes("invalid login credentials")) {
+  if (lowerMessage.includes("invalid login credentials") || 
+      lowerMessage.includes("invalid credentials")) {
     return AUTH_ERRORS.INVALID_CREDENTIALS;
+  }
+  // 이메일 확인이 필요한 경우
+  if (lowerMessage.includes("email not confirmed") || 
+      lowerMessage.includes("confirm your email")) {
+    return "이메일 인증이 필요합니다. 가입 시 입력한 이메일을 확인해주세요.";
   }
   if (lowerMessage.includes("already registered") || 
       lowerMessage.includes("user already registered") ||
