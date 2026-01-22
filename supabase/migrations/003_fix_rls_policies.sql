@@ -68,14 +68,22 @@ CREATE POLICY "Users can insert own preferences"
   WITH CHECK (auth.uid() = user_id);
 
 -- =============================================
--- 다른 사용자 프로필 조회 정책 (계약서/채팅용)
+-- 프로필 조회 정책 (수정됨)
 -- =============================================
--- 고용주-근로자 간 프로필 조회 허용
+-- 중요: 자기 자신의 프로필은 항상 조회 가능해야 함!
+-- 기존 정책을 제거하지 않고 유지
+
+-- 자기 자신 프로필 조회 정책 (반드시 필요!)
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
+CREATE POLICY "Users can view own profile"
+  ON profiles FOR SELECT
+  USING (auth.uid() = id);
+
+-- 연결된 사용자 프로필 조회 정책 (계약서/채팅용)
 DROP POLICY IF EXISTS "Users can view related profiles" ON profiles;
 CREATE POLICY "Users can view related profiles"
   ON profiles FOR SELECT
   USING (
-    auth.uid() = id OR
     -- 계약서를 통해 연결된 사용자
     EXISTS (
       SELECT 1 FROM contracts
@@ -89,9 +97,6 @@ CREATE POLICY "Users can view related profiles"
          OR (chat_rooms.worker_id = auth.uid() AND chat_rooms.employer_id = id)
     )
   );
-
--- 기존 자기 자신 조회 정책 제거 (위 정책에 통합됨)
-DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
 
 -- =============================================
 -- 계약서 초대 UPDATE 정책 추가

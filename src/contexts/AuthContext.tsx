@@ -123,25 +123,40 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // 프로필 가져오기
-  const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
+  // 프로필 가져오기 (재시도 로직 포함)
+  const fetchProfile = useCallback(async (userId: string, retries = 3): Promise<Profile | null> => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", userId)
+          .single();
 
-      if (error) {
+        if (error) {
+          logger.warn(`Fetch profile attempt ${attempt + 1} failed:`, error.message);
+          
+          // RLS 에러 또는 프로필이 아직 생성되지 않은 경우 재시도
+          if (attempt < retries - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+            continue;
+          }
+          
+          logger.error("Error fetching profile after retries:", error);
+          return null;
+        }
+
+        return data as Profile;
+      } catch (error) {
         logger.error("Error fetching profile:", error);
+        if (attempt < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+          continue;
+        }
         return null;
       }
-
-      return data as Profile;
-    } catch (error) {
-      logger.error("Error fetching profile:", error);
-      return null;
     }
+    return null;
   }, []);
 
   // 초기 세션 확인

@@ -112,8 +112,16 @@ export function translateAuthError(errorMessage: string): string {
   if (lowerMessage.includes("invalid login credentials")) {
     return AUTH_ERRORS.INVALID_CREDENTIALS;
   }
-  if (lowerMessage.includes("already registered") || lowerMessage.includes("user already registered")) {
+  if (lowerMessage.includes("already registered") || 
+      lowerMessage.includes("user already registered") ||
+      lowerMessage.includes("duplicate key") ||
+      lowerMessage.includes("unique constraint") ||
+      lowerMessage.includes("email address") && lowerMessage.includes("already")) {
     return AUTH_ERRORS.ALREADY_REGISTERED;
+  }
+  // 전화번호 중복 체크 (가상 이메일 형식)
+  if (lowerMessage.includes("signplease.app") && lowerMessage.includes("already")) {
+    return "이미 가입된 전화번호입니다";
   }
   if (lowerMessage.includes("invalid email")) {
     return AUTH_ERRORS.INVALID_EMAIL;

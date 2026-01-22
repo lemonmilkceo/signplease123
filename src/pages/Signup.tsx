@@ -120,20 +120,24 @@ function Signup() {
       if (authData.user) {
         logger.action("signup_success", { userId: authData.user.id });
         
-        // 프로필 upsert (트리거로 기본 프로필이 생성되지만 Race Condition 방지)
-        // 재시도 로직으로 트리거 완료 대기
-        const updateProfileWithRetry = async (userId: string, retries = 3): Promise<void> => {
+        // 프로필 업데이트 (트리거로 기본 프로필이 생성된 후 추가 정보 업데이트)
+        // 트리거 완료 대기 후 UPDATE 시도
+        const updateProfileWithRetry = async (userId: string, retries = 5): Promise<void> => {
+          // 트리거가 프로필을 생성할 시간을 줌
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
           for (let attempt = 0; attempt < retries; attempt++) {
+            // upsert 대신 update 사용 (트리거가 이미 생성했으므로)
             const { error: profileError } = await supabase
               .from("profiles")
-              .upsert({
-                id: userId,
+              .update({
                 name: formData.name,
                 gender: formData.gender,
                 birth_date: formData.birthDate,
                 phone: formData.phone,
                 email: formData.email.trim() || authEmail,
-              }, { onConflict: 'id' });
+              })
+              .eq("id", userId);
 
             if (!profileError) {
               logger.debug("Profile updated successfully");
@@ -142,12 +146,13 @@ function Signup() {
             
             logger.debug(`Profile update attempt ${attempt + 1} failed`, profileError);
             
-            // RLS 에러일 수 있으므로 짧은 대기 후 재시도
+            // 프로필이 아직 생성되지 않았을 수 있으므로 대기 후 재시도
             if (attempt < retries - 1) {
               await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
             }
           }
           // 모든 재시도 실패해도 회원가입은 성공으로 처리
+          // (프로필은 트리거로 최소한 생성되어 있음)
           logger.warn("Profile update failed after retries, but signup succeeded");
         };
 
