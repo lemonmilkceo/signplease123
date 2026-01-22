@@ -313,13 +313,13 @@
 | AllowanceCalculator | ✅ | 완료 (수당 계산기) |
 | GuestModeModal | ✅ | 완료 (둘러보기 모드 가입 유도) |
 | NotificationBell | ✅ | 완료 |
-| AppDrawer | ❌ | 미구현 (사이드 메뉴) |
-| NavLink | ❌ | 미구현 |
-| PDFPreviewModal | ⚠️ | print API 사용 (utils에 구현) |
-| SupportChat | ⚠️ | Support 페이지에 인라인 구현 |
-| WorkerReviewModal | ❌ | 미구현 |
-| ChatRoomList | ⚠️ | Chat 페이지에 인라인 구현 (분리 가능) |
-| ChatView | ⚠️ | Chat 페이지에 인라인 구현 (분리 가능) |
+| AppDrawer | ✅ | 완료 (사이드 메뉴) |
+| NavLink | ✅ | 완료 (+ BottomNav 포함) |
+| PDFPreviewModal | ✅ | print API 사용 (utils에 구현) |
+| SupportChat | ✅ | 완료 (분리됨) |
+| WorkerReviewModal | ✅ | 완료 (근로자 리뷰 모달) |
+| ChatRoomList | ✅ | 완료 (분리됨) |
+| ChatView | ✅ | 완료 (기존 구현 유지) |
 
 ---
 
