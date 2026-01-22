@@ -1,24 +1,52 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
+import { supabase } from "../lib/supabase";
 
 function ForgotPassword() {
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSent, setIsSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier.trim()) return;
 
     setIsLoading(true);
+    setError(null);
     
-    // TODO: Supabase 비밀번호 재설정 이메일 발송
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // 이메일 형식 확인
+      const isEmail = identifier.includes("@");
+      
+      if (!isEmail) {
+        // 전화번호인 경우 - 현재 Supabase는 이메일만 지원
+        setError("비밀번호 재설정은 이메일로만 가능합니다. 이메일을 입력해주세요.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Supabase 비밀번호 재설정 이메일 발송
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        identifier,
+        {
+          redirectTo: `${window.location.origin}/reset-password`,
+        }
+      );
+
+      if (resetError) {
+        throw resetError;
+      }
+
       setIsSent(true);
-    }, 1500);
+    } catch (err) {
+      console.error("Password reset error:", err);
+      setError("비밀번호 재설정 이메일 발송에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -50,6 +78,13 @@ function ForgotPassword() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* 에러 메시지 */}
+              {error && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-caption">
+                  {error}
+                </div>
+              )}
+
               {/* 이메일/전화번호 입력 */}
               <Input
                 type="text"

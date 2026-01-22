@@ -1,22 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
+import { useContracts } from "../../hooks/useContracts";
 
 type Tab = "pending" | "completed" | "folders" | "trash";
 
-interface Contract {
-  id: string;
-  employerName: string;
-  workPlace: string;
-  hourlyWage: string;
-  status: "pending" | "completed";
-  createdAt: string;
-}
-
-// Mock 데이터
-const mockContracts: Contract[] = [
-];
-
 export default function WorkerDashboard() {
+  const { contracts, isLoading, error } = useContracts();
   const [activeTab, setActiveTab] = useState<Tab>("pending");
 
   const tabs: { key: Tab; label: string; icon: string }[] = [
@@ -26,13 +15,21 @@ export default function WorkerDashboard() {
     { key: "trash", label: "휴지통", icon: "🗑️" },
   ];
 
-  const filteredContracts = mockContracts.filter((c) => {
-    if (activeTab === "pending") return c.status === "pending";
-    if (activeTab === "completed") return c.status === "completed";
-    return false;
-  });
+  const filteredContracts = useMemo(() => {
+    return contracts.filter((c) => {
+      if (activeTab === "pending") return c.status === "pending" || c.status === "draft";
+      if (activeTab === "completed") return c.status === "completed";
+      return false;
+    });
+  }, [contracts, activeTab]);
 
-  const pendingCount = mockContracts.filter(c => c.status === "pending").length;
+  const pendingCount = contracts.filter(c => c.status === "pending" || c.status === "draft").length;
+
+  // 날짜 포맷 함수
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -81,7 +78,21 @@ export default function WorkerDashboard() {
       <main className="mobile-container py-6">
         {(activeTab === "pending" || activeTab === "completed") && (
           <>
-            {filteredContracts.length === 0 ? (
+            {/* 로딩 상태 */}
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="animate-spin w-10 h-10 border-3 border-primary border-t-transparent rounded-full mb-4" />
+                <p className="text-body text-muted-foreground">계약서를 불러오는 중...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+                  <span className="text-4xl">⚠️</span>
+                </div>
+                <p className="text-body text-destructive mb-2">오류가 발생했습니다</p>
+                <p className="text-caption text-muted-foreground">{error.message}</p>
+              </div>
+            ) : filteredContracts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mb-4">
                   <span className="text-4xl">{activeTab === "pending" ? "📝" : "✅"}</span>
@@ -104,23 +115,25 @@ export default function WorkerDashboard() {
                           <span className="text-xl">👔</span>
                         </div>
                         <div>
-                          <p className="text-body font-semibold text-foreground">{contract.workPlace}</p>
-                          <p className="text-caption text-muted-foreground">{contract.employerName} 사장님</p>
+                          <p className="text-body font-semibold text-foreground">{contract.work_place}</p>
+                          <p className="text-caption text-muted-foreground">사장님</p>
                         </div>
                       </div>
                       <span className={`px-2.5 py-1 rounded-lg text-caption font-medium ${
-                        contract.status === "pending"
-                          ? "bg-warning/10 text-warning"
-                          : "bg-success/10 text-success"
+                        contract.status === "draft"
+                          ? "bg-secondary text-muted-foreground"
+                          : contract.status === "pending"
+                            ? "bg-warning/10 text-warning"
+                            : "bg-success/10 text-success"
                       }`}>
-                        {contract.status === "pending" ? "서명 대기" : "완료"}
+                        {contract.status === "draft" ? "작성 중" : contract.status === "pending" ? "서명 대기" : "완료"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-caption">
-                      <span className="text-primary font-medium">시급 {parseInt(contract.hourlyWage).toLocaleString()}원</span>
-                      <span className="text-muted-foreground">{contract.createdAt}</span>
+                      <span className="text-primary font-medium">시급 {contract.hourly_wage.toLocaleString()}원</span>
+                      <span className="text-muted-foreground">{formatDate(contract.created_at)}</span>
                     </div>
-                    {contract.status === "pending" && (
+                    {(contract.status === "pending" || contract.status === "draft") && (
                       <div className="mt-3 pt-3 border-t border-border">
                         <div className="flex items-center gap-2 text-primary">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

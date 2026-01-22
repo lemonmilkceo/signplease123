@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
+import { supabase } from "../lib/supabase";
 
 function ResetPassword() {
   const navigate = useNavigate();
@@ -11,6 +12,38 @@ function ResetPassword() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isValidSession, setIsValidSession] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  // 세션 확인 (리셋 링크에서 온 경우)
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session) {
+          setIsValidSession(true);
+        } else {
+          // URL에서 토큰 확인 (Supabase 리다이렉트 후)
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          const accessToken = hashParams.get("access_token");
+          
+          if (accessToken) {
+            setIsValidSession(true);
+          } else {
+            setError("유효하지 않은 링크입니다. 비밀번호 찾기를 다시 진행해주세요.");
+          }
+        }
+      } catch (err) {
+        console.error("Session check error:", err);
+        setError("세션 확인에 실패했습니다.");
+      } finally {
+        setIsCheckingSession(false);
+      }
+    };
+
+    checkSession();
+  }, []);
 
   const validatePassword = (): boolean => {
     if (password.length < 6) {
@@ -32,12 +65,74 @@ function ResetPassword() {
 
     setIsLoading(true);
     
-    // TODO: Supabase 비밀번호 재설정
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // Supabase 비밀번호 업데이트
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password,
+      });
+
+      if (updateError) {
+        throw updateError;
+      }
+
       setIsSuccess(true);
-    }, 1500);
+    } catch (err) {
+      console.error("Password update error:", err);
+      setError("비밀번호 변경에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  // 세션 확인 중
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-muted-foreground">확인 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 유효하지 않은 세션
+  if (!isValidSession && !isSuccess) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <div className="flex items-center gap-3 p-4 border-b border-border">
+          <button 
+            onClick={() => navigate("/login")}
+            className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors"
+          >
+            <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <h1 className="text-heading text-foreground">비밀번호 재설정</h1>
+        </div>
+        <div className="flex-1 p-6 flex flex-col items-center justify-center text-center">
+          <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mb-6">
+            <svg className="w-10 h-10 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-title text-foreground mb-2">링크가 만료되었습니다</h2>
+          <p className="text-body text-muted-foreground mb-8">
+            비밀번호 재설정 링크가 유효하지 않거나 만료되었습니다.<br />
+            다시 시도해주세요.
+          </p>
+          <Button 
+            variant="primary" 
+            fullWidth 
+            onClick={() => navigate("/forgot-password")}
+          >
+            비밀번호 찾기
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

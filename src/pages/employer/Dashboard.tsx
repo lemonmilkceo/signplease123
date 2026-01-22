@@ -1,23 +1,13 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import NotificationBell from "../../components/NotificationBell";
+import { useContracts } from "../../hooks/useContracts";
 
 type Tab = "pending" | "completed" | "folders" | "trash";
 type SortOption = "newest" | "oldest" | "name" | "wage";
 
-interface Contract {
-  id: string;
-  workerName: string;
-  workPlace: string;
-  hourlyWage: string;
-  status: "pending" | "completed";
-  createdAt: string;
-}
-
-// 실제 데이터는 useContracts 훅에서 가져옴 (현재는 빈 배열)
-const mockContracts: Contract[] = [];
-
 export default function EmployerDashboard() {
+  const { contracts, isLoading, error } = useContracts();
   const [activeTab, setActiveTab] = useState<Tab>("pending");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -40,10 +30,10 @@ export default function EmployerDashboard() {
 
   // 필터링 및 정렬
   const filteredContracts = useMemo(() => {
-    let result = mockContracts.filter((c) => {
+    let result = contracts.filter((c) => {
       // 탭 필터
       if (activeTab === "pending") {
-        if (c.status !== "pending") return false;
+        if (c.status !== "pending" && c.status !== "draft") return false;
       } else if (activeTab === "completed") {
         if (c.status !== "completed") return false;
       } else {
@@ -54,8 +44,8 @@ export default function EmployerDashboard() {
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         return (
-          c.workerName.toLowerCase().includes(query) ||
-          c.workPlace.toLowerCase().includes(query)
+          c.worker_name.toLowerCase().includes(query) ||
+          c.work_place.toLowerCase().includes(query)
         );
       }
 
@@ -63,27 +53,33 @@ export default function EmployerDashboard() {
     });
 
     // 정렬
-    result.sort((a, b) => {
+    result = [...result].sort((a, b) => {
       switch (sortOption) {
         case "newest":
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         case "oldest":
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         case "name":
-          return a.workerName.localeCompare(b.workerName, "ko");
+          return a.worker_name.localeCompare(b.worker_name, "ko");
         case "wage":
-          return parseInt(b.hourlyWage) - parseInt(a.hourlyWage);
+          return b.hourly_wage - a.hourly_wage;
         default:
           return 0;
       }
     });
 
     return result;
-  }, [activeTab, searchQuery, sortOption]);
+  }, [contracts, activeTab, searchQuery, sortOption]);
 
-  const totalCount = mockContracts.filter(c => 
-    activeTab === "pending" ? c.status === "pending" : c.status === "completed"
+  const totalCount = contracts.filter(c => 
+    activeTab === "pending" ? (c.status === "pending" || c.status === "draft") : c.status === "completed"
   ).length;
+
+  // 날짜 포맷 함수
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -93,7 +89,9 @@ export default function EmployerDashboard() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-title text-foreground">계약 관리</h1>
-              <p className="text-caption text-muted-foreground">총 {mockContracts.length}건의 계약서</p>
+              <p className="text-caption text-muted-foreground">
+                {isLoading ? "불러오는 중..." : `총 ${contracts.length}건의 계약서`}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {/* 검색 버튼 */}
@@ -225,7 +223,21 @@ export default function EmployerDashboard() {
               </div>
             )}
 
-            {filteredContracts.length === 0 ? (
+            {/* 로딩 상태 */}
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="animate-spin w-10 h-10 border-3 border-primary border-t-transparent rounded-full mb-4" />
+                <p className="text-body text-muted-foreground">계약서를 불러오는 중...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+                  <span className="text-4xl">⚠️</span>
+                </div>
+                <p className="text-body text-destructive mb-2">오류가 발생했습니다</p>
+                <p className="text-caption text-muted-foreground">{error.message}</p>
+              </div>
+            ) : filteredContracts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mb-4">
                   <span className="text-4xl">{searchQuery ? "🔍" : activeTab === "pending" ? "📝" : "✅"}</span>
@@ -269,21 +281,23 @@ export default function EmployerDashboard() {
                           <span className="text-xl">👷</span>
                         </div>
                         <div>
-                          <p className="text-body font-semibold text-foreground">{contract.workerName}</p>
-                          <p className="text-caption text-muted-foreground">{contract.workPlace}</p>
+                          <p className="text-body font-semibold text-foreground">{contract.worker_name}</p>
+                          <p className="text-caption text-muted-foreground">{contract.work_place}</p>
                         </div>
                       </div>
                       <span className={`px-2.5 py-1 rounded-lg text-caption font-medium ${
-                        contract.status === "pending"
-                          ? "bg-warning/10 text-warning"
-                          : "bg-success/10 text-success"
+                        contract.status === "draft"
+                          ? "bg-secondary text-muted-foreground"
+                          : contract.status === "pending"
+                            ? "bg-warning/10 text-warning"
+                            : "bg-success/10 text-success"
                       }`}>
-                        {contract.status === "pending" ? "서명 대기" : "완료"}
+                        {contract.status === "draft" ? "작성 중" : contract.status === "pending" ? "서명 대기" : "완료"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-caption">
-                      <span className="text-primary font-medium">시급 {parseInt(contract.hourlyWage).toLocaleString()}원</span>
-                      <span className="text-muted-foreground">{contract.createdAt}</span>
+                      <span className="text-primary font-medium">시급 {contract.hourly_wage.toLocaleString()}원</span>
+                      <span className="text-muted-foreground">{formatDate(contract.created_at)}</span>
                     </div>
                   </Link>
                 ))}
