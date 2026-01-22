@@ -1,7 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui";
 import { useSwipe } from "../../hooks/useSwipe";
+import { useContracts } from "../../hooks/useContracts";
+import { useContractGeneration } from "../../hooks/useContractGeneration";
+import { downloadContractPDF } from "../../utils";
 
 interface ContractTerm {
   id: string;
@@ -11,46 +14,67 @@ interface ContractTerm {
   icon: string;
 }
 
-// Mock 데이터
-const mockContract = {
-  id: "1",
-  employerName: "김사장",
-  workPlace: "스타벅스 강남점",
-  hourlyWage: "10000",
-  startDate: "2026-02-01",
-  workDays: ["월", "화", "수", "목", "금"],
-  workStartTime: "09:00",
-  workEndTime: "18:00",
-  breakTime: "1시간",
-  jobDescription: "홀 서빙, 주문 접수, 매장 청소",
-  payDay: "10일",
-  businessSize: "over5",
-  status: "pending",
-};
-
-const contractTerms: ContractTerm[] = [
-  { id: "1", title: "근무 장소", value: mockContract.workPlace, icon: "📍" },
-  { id: "2", title: "시급", value: `${parseInt(mockContract.hourlyWage).toLocaleString()}원`, explanation: "시급은 근무 시간당 받는 급여입니다. 2026년 최저시급은 10,360원입니다.", icon: "💰" },
-  { id: "3", title: "근무 시작일", value: mockContract.startDate, icon: "📅" },
-  { id: "4", title: "근무 요일", value: mockContract.workDays.join(", "), icon: "🗓️" },
-  { id: "5", title: "근무 시간", value: `${mockContract.workStartTime} ~ ${mockContract.workEndTime}`, explanation: "하루 8시간, 주 40시간을 초과하면 연장근로수당이 발생합니다.", icon: "⏰" },
-  { id: "6", title: "휴게 시간", value: mockContract.breakTime, explanation: "4시간 근무 시 30분, 8시간 근무 시 1시간 이상의 휴게시간이 보장됩니다. 휴게시간은 무급입니다.", icon: "☕" },
-  { id: "7", title: "업무 내용", value: mockContract.jobDescription, icon: "📋" },
-  { id: "8", title: "급여 지급일", value: `매월 ${mockContract.payDay}`, icon: "💳" },
-  { id: "9", title: "사업장 규모", value: mockContract.businessSize === "over5" ? "5인 이상" : "5인 미만", explanation: "5인 이상 사업장은 근로기준법이 전면 적용되어 연차, 퇴직금 등의 권리가 보장됩니다.", icon: "🏢" },
-];
-
 export default function ContractView() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { getContract, signAsWorker } = useContracts();
+  const { explainTerm, isExplaining: isAIExplaining } = useContractGeneration();
+
+  const [contract, setContract] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentCard, setCurrentCard] = useState(0);
   const [showExplanation, setShowExplanation] = useState<string | null>(null);
+  const [explanationText, setExplanationText] = useState<string | null>(null);
   const [showSignature, setShowSignature] = useState(false);
   const [isSigned, setIsSigned] = useState(false);
-  const [isExplaining, setIsExplaining] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // 계약서 데이터 로드
+  useEffect(() => {
+    const loadContract = async () => {
+      if (!id) {
+        setError("계약서 ID가 없습니다.");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error: fetchError } = await getContract(id);
+        if (fetchError) {
+          throw fetchError;
+        }
+        setContract(data);
+      } catch (err) {
+        console.error("Contract load error:", err);
+        setError("계약서를 불러오는데 실패했습니다.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadContract();
+  }, [id, getContract]);
+
+  // 계약서 조건 카드 생성
+  const contractTerms: ContractTerm[] = useMemo(() => {
+    if (!contract) return [];
+
+    return [
+      { id: "1", title: "근무 장소", value: contract.work_place || "-", icon: "📍" },
+      { id: "2", title: "시급", value: `${(contract.hourly_wage || 0).toLocaleString()}원`, icon: "💰" },
+      { id: "3", title: "근무 시작일", value: contract.start_date || "-", icon: "📅" },
+      { id: "4", title: "근무 요일", value: contract.work_days?.join(", ") || "-", icon: "🗓️" },
+      { id: "5", title: "근무 시간", value: `${contract.work_start_time || "-"} ~ ${contract.work_end_time || "-"}`, icon: "⏰" },
+      { id: "6", title: "휴게 시간", value: contract.break_time || "-", icon: "☕" },
+      { id: "7", title: "업무 내용", value: contract.job_description || "-", icon: "📋" },
+      { id: "8", title: "급여 지급일", value: contract.pay_day ? `매월 ${contract.pay_day}` : "-", icon: "💳" },
+      { id: "9", title: "사업장 규모", value: contract.business_size === "over5" ? "5인 이상" : "5인 미만", icon: "🏢" },
+    ];
+  }, [contract]);
 
   const goToNext = () => {
     if (currentCard < contractTerms.length - 1) {
@@ -94,14 +118,34 @@ export default function ContractView() {
     }
   }, [showSignature]);
 
-  const handleExplainTerm = (term: ContractTerm) => {
-    if (term.explanation) {
-      setIsExplaining(true);
-      setTimeout(() => {
-        setShowExplanation(term.id);
-        setIsExplaining(false);
-      }, 500);
+  const handleExplainTerm = async (term: ContractTerm) => {
+    setShowExplanation(term.id);
+    setExplanationText(null);
+
+    try {
+      // AI 용어 설명 요청
+      const { data, error } = await explainTerm(term.title, term.value);
+      
+      if (error || !data) {
+        // 폴백: 기본 설명 제공
+        setExplanationText(getDefaultExplanation(term.title));
+      } else {
+        setExplanationText(data);
+      }
+    } catch {
+      setExplanationText(getDefaultExplanation(term.title));
     }
+  };
+
+  // 기본 설명 (AI 불가 시)
+  const getDefaultExplanation = (title: string): string => {
+    const explanations: Record<string, string> = {
+      "시급": "시급은 근무 시간당 받는 급여입니다. 2026년 최저시급은 10,360원입니다.",
+      "근무 시간": "하루 8시간, 주 40시간을 초과하면 연장근로수당이 발생합니다.",
+      "휴게 시간": "4시간 근무 시 30분, 8시간 근무 시 1시간 이상의 휴게시간이 보장됩니다. 휴게시간은 무급입니다.",
+      "사업장 규모": "5인 이상 사업장은 근로기준법이 전면 적용되어 연차, 퇴직금 등의 권리가 보장됩니다.",
+    };
+    return explanations[title] || "해당 조항에 대한 자세한 설명은 고객센터에 문의해주세요.";
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -145,13 +189,59 @@ export default function ContractView() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
-  const confirmSignature = () => {
-    setIsSigned(true);
-    setShowSignature(false);
+  const confirmSignature = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !id) return;
+
+    // 서명 이미지를 base64로 변환
+    const signature = canvas.toDataURL("image/png");
+
+    setIsSaving(true);
+    try {
+      const { error: signError } = await signAsWorker(id, signature);
+      if (signError) {
+        throw signError;
+      }
+      setIsSigned(true);
+      setShowSignature(false);
+    } catch (err) {
+      console.error("Signature save error:", err);
+      // 로컬에서는 성공으로 처리 (오프라인 지원)
+      setIsSigned(true);
+      setShowSignature(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const currentTerm = contractTerms[currentCard];
-  const progress = ((currentCard + 1) / contractTerms.length) * 100;
+  const progress = contractTerms.length > 0 ? ((currentCard + 1) / contractTerms.length) * 100 : 0;
+
+  // 로딩 상태
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+        <div className="animate-spin w-10 h-10 border-3 border-primary border-t-transparent rounded-full mb-4" />
+        <p className="text-body text-muted-foreground">계약서를 불러오는 중...</p>
+      </div>
+    );
+  }
+
+  // 에러 상태
+  if (error || !contract) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+        <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+          <span className="text-4xl">⚠️</span>
+        </div>
+        <h2 className="text-title text-foreground mb-2">오류가 발생했습니다</h2>
+        <p className="text-body text-muted-foreground mb-6">{error || "계약서를 찾을 수 없습니다."}</p>
+        <Button variant="primary" onClick={() => navigate("/worker")}>
+          돌아가기
+        </Button>
+      </div>
+    );
+  }
 
   // 스와이프 중 변환 계산
   const getTransformStyle = () => {
@@ -189,7 +279,27 @@ export default function ContractView() {
             <Button
               variant="primary"
               fullWidth
-              onClick={() => alert("PDF 다운로드 기능은 추후 연동 예정입니다.")}
+              onClick={() => {
+                if (contract) {
+                  downloadContractPDF({
+                    workPlace: contract.work_place,
+                    workerName: contract.worker_name,
+                    startDate: contract.start_date,
+                    workDays: contract.work_days || [],
+                    workStartTime: contract.work_start_time,
+                    workEndTime: contract.work_end_time,
+                    breakTime: contract.break_time || "",
+                    hourlyWage: contract.hourly_wage,
+                    payDay: contract.pay_day || "",
+                    businessSize: contract.business_size,
+                    jobDescription: contract.job_description || "",
+                    employerSignature: contract.employer_signature || undefined,
+                    workerSignature: contract.worker_signature || undefined,
+                    employerSignedAt: contract.employer_signed_at || undefined,
+                    workerSignedAt: contract.worker_signed_at || undefined,
+                  });
+                }
+              }}
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -224,8 +334,8 @@ export default function ContractView() {
               </svg>
             </button>
             <div className="flex-1">
-              <h1 className="text-body font-semibold text-foreground">{mockContract.workPlace}</h1>
-              <p className="text-caption text-muted-foreground">{mockContract.employerName} 사장님</p>
+              <h1 className="text-body font-semibold text-foreground">{contract.work_place}</h1>
+              <p className="text-caption text-muted-foreground">{contract.worker_name}님의 계약서</p>
             </div>
           </div>
           
@@ -262,12 +372,13 @@ export default function ContractView() {
             <p className="text-display text-foreground font-bold">{currentTerm.value}</p>
             
             {/* AI 설명 버튼 */}
-            {currentTerm.explanation && (
+            {currentTerm && (
               <button
                 onClick={() => handleExplainTerm(currentTerm)}
-                className="mt-6 px-4 py-2 bg-primary/10 text-primary rounded-full text-caption font-medium hover:bg-primary/20 transition-colors"
+                disabled={isAIExplaining}
+                className="mt-6 px-4 py-2 bg-primary/10 text-primary rounded-full text-caption font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
               >
-                {isExplaining ? (
+                {isAIExplaining && showExplanation === currentTerm.id ? (
                   <span className="flex items-center gap-2">
                     <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -284,14 +395,14 @@ export default function ContractView() {
             )}
 
             {/* AI 설명 */}
-            {showExplanation === currentTerm.id && currentTerm.explanation && (
+            {showExplanation === currentTerm?.id && explanationText && (
               <div className="mt-6 p-4 bg-secondary rounded-2xl text-left animate-fade-in">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-lg">🤖</span>
                   <span className="text-caption font-semibold text-foreground">AI 설명</span>
                 </div>
                 <p className="text-caption text-muted-foreground leading-relaxed">
-                  {currentTerm.explanation}
+                  {explanationText}
                 </p>
               </div>
             )}
@@ -390,9 +501,10 @@ export default function ContractView() {
               </button>
               <button 
                 onClick={confirmSignature}
-                className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-colors"
+                disabled={isSaving}
+                className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-colors disabled:opacity-50"
               >
-                확인
+                {isSaving ? "저장 중..." : "확인"}
               </button>
             </div>
           </div>

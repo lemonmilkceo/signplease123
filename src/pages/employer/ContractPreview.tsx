@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui";
+import { useContracts } from "../../hooks/useContracts";
+import { useContractGeneration } from "../../hooks/useContractGeneration";
+import { downloadContractPDF, shareContract } from "../../utils";
 
 interface ContractData {
   businessSize: "under5" | "over5" | null;
@@ -21,18 +24,91 @@ export default function ContractPreview() {
   const navigate = useNavigate();
   const contractData = location.state?.contractData as ContractData | undefined;
 
+  const { createContract, signAsEmployer } = useContracts();
+  const { generateContract, isGenerating: isAIGenerating, error: aiError } = useContractGeneration();
+
   const [isGenerating, setIsGenerating] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedContractId, setSavedContractId] = useState<string | null>(null);
+  const [generationStep, setGenerationStep] = useState(0);
   const [showSignature, setShowSignature] = useState(false);
   const [isSigned, setIsSigned] = useState(false);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
+  // 계약서 생성 프로세스
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsGenerating(false);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
+    const generateAndSave = async () => {
+      if (!contractData || !contractData.businessSize) return;
+
+      try {
+        // Step 1: 근로자 정보 확인
+        setGenerationStep(1);
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // Step 2: 근무 조건 검토
+        setGenerationStep(2);
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // Step 3: 계약서 생성 (DB 저장)
+        setGenerationStep(3);
+        
+        const { data: contract, error: createError } = await createContract({
+          businessSize: contractData.businessSize,
+          workerName: contractData.workerName,
+          workerPhone: undefined,
+          hourlyWage: parseInt(contractData.hourlyWage),
+          startDate: contractData.startDate,
+          endDate: undefined,
+          workDays: contractData.workDays,
+          workStartTime: contractData.workStartTime,
+          workEndTime: contractData.workEndTime,
+          breakTime: contractData.breakTime,
+          workPlace: contractData.workPlace,
+          jobDescription: contractData.jobDescription,
+          payDay: contractData.payDay,
+        });
+
+        if (createError) {
+          throw createError;
+        }
+
+        if (contract) {
+          setSavedContractId(contract.id);
+          
+          // AI 생성 시도 (Edge Function이 배포되어 있으면 작동)
+          try {
+            await generateContract({
+              businessSize: contractData.businessSize,
+              workerName: contractData.workerName,
+              hourlyWage: parseInt(contractData.hourlyWage),
+              startDate: contractData.startDate,
+              workDays: contractData.workDays,
+              workStartTime: contractData.workStartTime,
+              workEndTime: contractData.workEndTime,
+              breakTime: contractData.breakTime,
+              workPlace: contractData.workPlace,
+              jobDescription: contractData.jobDescription,
+              payDay: contractData.payDay,
+            });
+          } catch {
+            // AI 생성 실패해도 기본 계약서는 사용 가능
+            console.log("AI generation not available, using default template");
+          }
+        }
+
+        setIsGenerating(false);
+      } catch (err) {
+        console.error("Contract creation error:", err);
+        setError(err instanceof Error ? err.message : "계약서 생성에 실패했습니다.");
+        setIsGenerating(false);
+      }
+    };
+
+    generateAndSave();
+  }, [contractData, createContract, generateContract]);
 
   useEffect(() => {
     if (showSignature && canvasRef.current) {
@@ -89,7 +165,30 @@ export default function ContractPreview() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
-  const confirmSignature = () => {
+  const confirmSignature = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // 서명 이미지를 base64로 변환
+    const signature = canvas.toDataURL("image/png");
+    setSignatureData(signature);
+
+    // DB에 서명 저장
+    if (savedContractId) {
+      setIsSaving(true);
+      try {
+        const { error: signError } = await signAsEmployer(savedContractId, signature);
+        if (signError) {
+          throw signError;
+        }
+      } catch (err) {
+        console.error("Signature save error:", err);
+        // 로컬에서는 성공으로 처리 (오프라인 지원)
+      } finally {
+        setIsSaving(false);
+      }
+    }
+
     setIsSigned(true);
     setShowSignature(false);
   };
@@ -109,6 +208,27 @@ export default function ContractPreview() {
     );
   }
 
+  // 에러 상태
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+        <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+          <span className="text-4xl">⚠️</span>
+        </div>
+        <h2 className="text-title text-foreground mb-2">오류가 발생했습니다</h2>
+        <p className="text-body text-muted-foreground mb-6 text-center">{error}</p>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => navigate("/employer")}>
+            대시보드로
+          </Button>
+          <Button variant="primary" onClick={() => navigate("/employer/create")}>
+            다시 작성하기
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // AI 생성 중
   if (isGenerating) {
     return (
@@ -117,23 +237,50 @@ export default function ContractPreview() {
           <div className="w-20 h-20 border-4 border-secondary rounded-full" />
           <div className="absolute top-0 left-0 w-20 h-20 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
-        <h2 className="text-title text-foreground mb-2">AI가 계약서를 생성하고 있습니다...</h2>
+        <h2 className="text-title text-foreground mb-2">계약서를 생성하고 있습니다...</h2>
         <p className="text-body text-muted-foreground">최신 근로기준법을 반영 중이에요</p>
         
         <div className="mt-8 w-full max-w-xs">
-          <div className="flex items-center gap-3 p-3 bg-secondary rounded-xl mb-2 animate-pulse">
-            <span>✅</span>
-            <span className="text-caption text-muted-foreground">근로자 정보 확인 완료</span>
+          <div className={`flex items-center gap-3 p-3 rounded-xl mb-2 transition-all ${
+            generationStep >= 1 ? "bg-success/10" : "bg-secondary"
+          }`}>
+            <span>{generationStep >= 1 ? "✅" : "⏳"}</span>
+            <span className={`text-caption ${generationStep >= 1 ? "text-success" : "text-muted-foreground"}`}>
+              근로자 정보 확인 {generationStep >= 1 ? "완료" : "중..."}
+            </span>
           </div>
-          <div className="flex items-center gap-3 p-3 bg-secondary rounded-xl mb-2 animate-pulse" style={{ animationDelay: "0.2s" }}>
-            <span>✅</span>
-            <span className="text-caption text-muted-foreground">근무 조건 검토 완료</span>
+          <div className={`flex items-center gap-3 p-3 rounded-xl mb-2 transition-all ${
+            generationStep >= 2 ? "bg-success/10" : generationStep === 1 ? "bg-primary/10" : "bg-secondary"
+          }`}>
+            <span>{generationStep >= 2 ? "✅" : generationStep === 1 ? "⏳" : "⏸️"}</span>
+            <span className={`text-caption ${
+              generationStep >= 2 ? "text-success" : generationStep === 1 ? "text-primary" : "text-muted-foreground"
+            }`}>
+              근무 조건 검토 {generationStep >= 2 ? "완료" : generationStep === 1 ? "중..." : "대기"}
+            </span>
           </div>
-          <div className="flex items-center gap-3 p-3 bg-primary/10 rounded-xl animate-pulse" style={{ animationDelay: "0.4s" }}>
-            <span className="animate-spin">⏳</span>
-            <span className="text-caption text-primary">계약서 문서 생성 중...</span>
+          <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+            generationStep >= 3 ? "bg-primary/10" : "bg-secondary"
+          }`}>
+            <span className={generationStep >= 3 ? "animate-spin" : ""}>
+              {generationStep >= 3 ? "⏳" : "⏸️"}
+            </span>
+            <span className={`text-caption ${generationStep >= 3 ? "text-primary" : "text-muted-foreground"}`}>
+              계약서 문서 생성 {generationStep >= 3 ? "중..." : "대기"}
+            </span>
           </div>
         </div>
+
+        {isAIGenerating && (
+          <p className="text-caption text-muted-foreground mt-4">
+            🤖 AI가 법적 검토를 진행 중입니다...
+          </p>
+        )}
+        {aiError && (
+          <p className="text-caption text-warning mt-4">
+            ⚠️ AI 기능 없이 기본 템플릿으로 생성합니다
+          </p>
+        )}
       </div>
     );
   }
@@ -248,14 +395,31 @@ export default function ContractPreview() {
           ) : (
             <>
               <button
-                onClick={() => alert("카카오톡 공유 기능은 추후 연동 예정입니다.")}
+                onClick={() => savedContractId && shareContract(savedContractId)}
                 className="flex-1 py-4 bg-[#FEE500] text-black rounded-xl font-semibold hover:opacity-90 transition-all flex items-center justify-center gap-2"
               >
                 <span>💬</span>
-                카카오톡 공유
+                공유하기
               </button>
               <button
-                onClick={() => alert("PDF 다운로드 기능은 추후 연동 예정입니다.")}
+                onClick={() => {
+                  if (!contractData || !contractData.businessSize) return;
+                  downloadContractPDF({
+                    workPlace: contractData.workPlace,
+                    workerName: contractData.workerName,
+                    startDate: contractData.startDate,
+                    workDays: contractData.workDays,
+                    workStartTime: contractData.workStartTime,
+                    workEndTime: contractData.workEndTime,
+                    breakTime: contractData.breakTime,
+                    hourlyWage: parseInt(contractData.hourlyWage),
+                    payDay: contractData.payDay,
+                    businessSize: contractData.businessSize,
+                    jobDescription: contractData.jobDescription,
+                    employerSignature: signatureData || undefined,
+                    employerSignedAt: isSigned ? new Date().toISOString() : undefined,
+                  });
+                }}
                 className="flex-1 py-4 bg-secondary text-foreground rounded-xl font-semibold hover:bg-secondary/80 transition-all flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

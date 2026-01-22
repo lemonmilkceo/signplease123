@@ -160,3 +160,192 @@ export function setLocalStorage<T>(key: string, value: T): void {
 export function cn(...classes: (string | undefined | null | false)[]): string {
   return classes.filter(Boolean).join(" ");
 }
+
+// PDF Generation (using print API)
+export interface ContractPDFData {
+  workPlace: string;
+  workerName: string;
+  startDate: string;
+  workDays: string[];
+  workStartTime: string;
+  workEndTime: string;
+  breakTime: string;
+  hourlyWage: number;
+  payDay: string;
+  businessSize: "under5" | "over5";
+  jobDescription: string;
+  employerSignature?: string;
+  workerSignature?: string;
+  employerSignedAt?: string;
+  workerSignedAt?: string;
+}
+
+export function generateContractHTML(data: ContractPDFData): string {
+  const today = new Date().toLocaleDateString("ko-KR");
+  
+  return `
+    <!DOCTYPE html>
+    <html lang="ko">
+    <head>
+      <meta charset="UTF-8">
+      <title>표준근로계약서 - ${data.workerName}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+          padding: 40px;
+          max-width: 800px;
+          margin: 0 auto;
+          color: #333;
+          line-height: 1.6;
+        }
+        h1 { text-align: center; font-size: 24px; margin-bottom: 30px; }
+        .section { margin-bottom: 20px; }
+        .section-title { font-weight: bold; margin-bottom: 10px; color: #1a1a1a; }
+        .row { display: flex; border-bottom: 1px solid #ddd; padding: 12px 0; }
+        .label { width: 150px; color: #666; flex-shrink: 0; }
+        .value { flex: 1; font-weight: 500; }
+        .signature-section { margin-top: 40px; }
+        .signature-row { display: flex; gap: 40px; justify-content: center; }
+        .signature-box { text-align: center; width: 200px; }
+        .signature-box p { margin-bottom: 10px; color: #666; }
+        .signature-box .sig { 
+          height: 80px; 
+          border: 2px dashed #ddd; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center;
+          border-radius: 8px;
+          margin-bottom: 8px;
+        }
+        .signature-box .sig.signed { border: 2px solid #3182F6; background: #f0f7ff; }
+        .signature-box .sig img { max-height: 70px; max-width: 180px; }
+        .signature-date { font-size: 12px; color: #999; }
+        .footer { margin-top: 40px; text-align: center; color: #999; font-size: 12px; }
+        .highlight { color: #3182F6; }
+        @media print {
+          body { padding: 20px; }
+          @page { margin: 20mm; }
+        }
+      </style>
+    </head>
+    <body>
+      <h1>표준근로계약서</h1>
+      <p style="text-align: center; color: #666; margin-bottom: 30px;">근로기준법 제17조에 의거하여 작성</p>
+
+      <div class="section">
+        <div class="row">
+          <span class="label">사업장명</span>
+          <span class="value">${data.workPlace}</span>
+        </div>
+        <div class="row">
+          <span class="label">근로자명</span>
+          <span class="value">${data.workerName}</span>
+        </div>
+        <div class="row">
+          <span class="label">계약기간</span>
+          <span class="value">${data.startDate} ~</span>
+        </div>
+        <div class="row">
+          <span class="label">근무일</span>
+          <span class="value">매주 ${data.workDays.join(", ")}</span>
+        </div>
+        <div class="row">
+          <span class="label">근무시간</span>
+          <span class="value">${data.workStartTime} ~ ${data.workEndTime}</span>
+        </div>
+        <div class="row">
+          <span class="label">휴게시간</span>
+          <span class="value">${data.breakTime}</span>
+        </div>
+        <div class="row">
+          <span class="label">시급</span>
+          <span class="value highlight">${data.hourlyWage.toLocaleString()}원</span>
+        </div>
+        <div class="row">
+          <span class="label">급여지급일</span>
+          <span class="value">매월 ${data.payDay}</span>
+        </div>
+        <div class="row">
+          <span class="label">사업장규모</span>
+          <span class="value">${data.businessSize === "over5" ? "5인 이상" : "5인 미만"}</span>
+        </div>
+        <div class="row">
+          <span class="label">업무내용</span>
+          <span class="value">${data.jobDescription}</span>
+        </div>
+      </div>
+
+      <div class="signature-section">
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">
+          본 계약서는 근로기준법에 따라 작성되었으며, 양 당사자는 위 내용을 확인하고 서명합니다.
+        </p>
+        <div class="signature-row">
+          <div class="signature-box">
+            <p>사업주</p>
+            <div class="sig ${data.employerSignature ? "signed" : ""}">
+              ${data.employerSignature 
+                ? `<img src="${data.employerSignature}" alt="사업주 서명" />`
+                : "서명 대기"}
+            </div>
+            ${data.employerSignedAt 
+              ? `<span class="signature-date">${new Date(data.employerSignedAt).toLocaleDateString("ko-KR")}</span>`
+              : ""}
+          </div>
+          <div class="signature-box">
+            <p>근로자</p>
+            <div class="sig ${data.workerSignature ? "signed" : ""}">
+              ${data.workerSignature 
+                ? `<img src="${data.workerSignature}" alt="근로자 서명" />`
+                : "서명 대기"}
+            </div>
+            ${data.workerSignedAt 
+              ? `<span class="signature-date">${new Date(data.workerSignedAt).toLocaleDateString("ko-KR")}</span>`
+              : ""}
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>생성일: ${today} | 싸인해주세요 서비스</p>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+export function downloadContractPDF(data: ContractPDFData): void {
+  const html = generateContractHTML(data);
+  const printWindow = window.open("", "_blank");
+  
+  if (printWindow) {
+    printWindow.document.write(html);
+    printWindow.document.close();
+    
+    // 이미지 로딩 대기 후 프린트
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
+  } else {
+    alert("팝업 차단을 해제해주세요.");
+  }
+}
+
+export function shareContract(contractId: string): void {
+  const url = `${window.location.origin}/worker/contract/${contractId}`;
+  
+  if (navigator.share) {
+    navigator.share({
+      title: "근로계약서 서명 요청",
+      text: "계약서를 확인하고 서명해주세요.",
+      url,
+    }).catch(console.error);
+  } else {
+    // 클립보드에 복사
+    navigator.clipboard.writeText(url).then(() => {
+      alert("링크가 클립보드에 복사되었습니다.");
+    }).catch(() => {
+      prompt("아래 링크를 복사하세요:", url);
+    });
+  }
+}

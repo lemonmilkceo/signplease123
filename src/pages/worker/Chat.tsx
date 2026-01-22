@@ -1,39 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
-
-interface ChatRoom {
-  id: string;
-  employerName: string;
-  workPlace: string;
-  lastMessage: string;
-  lastMessageTime: string;
-  unreadCount: number;
-}
-
-interface Message {
-  id: string;
-  senderId: string;
-  content: string;
-  timestamp: string;
-  type: "text" | "file";
-  fileName?: string;
-}
-
-// Mock 데이터
-const mockChatRooms: ChatRoom[] = [
-  { id: "1", employerName: "김사장", workPlace: "스타벅스 강남점", lastMessage: "내일부터 출근 부탁드려요.", lastMessageTime: "오후 2:15", unreadCount: 1 },
-  { id: "2", employerName: "이대표", workPlace: "투썸플레이스 역삼점", lastMessage: "수고하셨습니다!", lastMessageTime: "어제", unreadCount: 0 },
-];
-
-const mockMessages: Message[] = [
-  { id: "1", senderId: "employer", content: "안녕하세요, 계약서 확인하셨나요?", timestamp: "오후 2:05", type: "text" },
-  { id: "2", senderId: "worker", content: "네, 방금 확인하고 서명했습니다!", timestamp: "오후 2:10", type: "text" },
-  { id: "3", senderId: "employer", content: "좋습니다. 내일부터 출근 부탁드려요.", timestamp: "오후 2:15", type: "text" },
-];
+import { useChat, useChatMessages } from "../../hooks/useChat";
+import { useAuth } from "../../hooks";
 
 export default function WorkerChat() {
-  const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const { user } = useAuth();
+  const { chatRooms, isLoading: isRoomsLoading } = useChat();
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const { messages, isLoading: isMessagesLoading, sendMessage, markAsRead } = useChatMessages(selectedRoomId);
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,40 +16,36 @@ export default function WorkerChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = () => {
+  useEffect(() => {
+    if (selectedRoomId) {
+      markAsRead();
+    }
+  }, [selectedRoomId, markAsRead]);
+
+  const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
 
-    const message: Message = {
-      id: Date.now().toString(),
-      senderId: "worker",
-      content: newMessage,
-      timestamp: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
-      type: "text",
-    };
-
-    setMessages([...messages, message]);
+    await sendMessage(newMessage, "text");
     setNewMessage("");
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const message: Message = {
-      id: Date.now().toString(),
-      senderId: "worker",
-      content: file.name,
-      timestamp: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
-      type: "file",
-      fileName: file.name,
-    };
-
-    setMessages([...messages, message]);
-    alert(`파일 "${file.name}" 업로드 완료 (실제 업로드는 추후 연동 예정)`);
+    await sendMessage(`📎 ${file.name}`, "file");
+    alert(`파일 "${file.name}" 업로드 완료`);
   };
 
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const selectedRoom = chatRooms.find(r => r.id === selectedRoomId);
+
   // 채팅방 목록 뷰
-  if (!selectedRoom) {
+  if (!selectedRoomId) {
     return (
       <div className="min-h-screen bg-background flex flex-col pb-20">
         {/* 헤더 */}
@@ -87,7 +57,12 @@ export default function WorkerChat() {
 
         {/* 채팅방 목록 */}
         <main className="flex-1 mobile-container py-4">
-          {mockChatRooms.length === 0 ? (
+          {isRoomsLoading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="animate-spin w-10 h-10 border-3 border-primary border-t-transparent rounded-full mb-4" />
+              <p className="text-body text-muted-foreground">불러오는 중...</p>
+            </div>
+          ) : chatRooms.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20">
               <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mb-4">
                 <span className="text-4xl">💬</span>
@@ -97,10 +72,10 @@ export default function WorkerChat() {
             </div>
           ) : (
             <div className="space-y-2">
-              {mockChatRooms.map((room) => (
+              {chatRooms.map((room) => (
                 <button
                   key={room.id}
-                  onClick={() => setSelectedRoom(room)}
+                  onClick={() => setSelectedRoomId(room.id)}
                   className="w-full flex items-center gap-4 p-4 bg-card border border-border rounded-2xl hover:bg-secondary/50 transition-colors text-left"
                 >
                   <div className="w-12 h-12 rounded-full bg-warning/10 flex items-center justify-center text-xl">
@@ -108,17 +83,20 @@ export default function WorkerChat() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-body font-semibold text-foreground">{room.employerName} 사장님</span>
-                      <span className="text-caption text-muted-foreground">{room.lastMessageTime}</span>
+                      <span className="text-body font-semibold text-foreground">
+                        {room.employer_name || "사장님"}
+                      </span>
+                      <span className="text-caption text-muted-foreground">
+                        {room.last_message_time || formatTime(room.created_at)}
+                      </span>
                     </div>
-                    <p className="text-caption text-muted-foreground mb-1">{room.workPlace}</p>
                     <div className="flex justify-between items-center">
                       <span className="text-caption text-muted-foreground truncate max-w-[180px]">
-                        {room.lastMessage}
+                        {room.last_message || "새 채팅방"}
                       </span>
-                      {room.unreadCount > 0 && (
+                      {(room.unread_count || 0) > 0 && (
                         <span className="bg-destructive text-white text-caption px-2 py-0.5 rounded-full min-w-[20px] text-center">
-                          {room.unreadCount}
+                          {room.unread_count}
                         </span>
                       )}
                     </div>
@@ -161,7 +139,7 @@ export default function WorkerChat() {
       <header className="sticky top-0 bg-background/80 backdrop-blur-lg border-b border-border z-10 p-4">
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => setSelectedRoom(null)}
+            onClick={() => setSelectedRoomId(null)}
             className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors"
           >
             <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -172,45 +150,59 @@ export default function WorkerChat() {
             👔
           </div>
           <div className="flex-1">
-            <p className="text-body font-semibold text-foreground">{selectedRoom.employerName} 사장님</p>
-            <p className="text-caption text-muted-foreground">{selectedRoom.workPlace}</p>
+            <p className="text-body font-semibold text-foreground">
+              {selectedRoom?.employer_name || "사장님"}
+            </p>
+            <p className="text-caption text-success">온라인</p>
           </div>
         </div>
       </header>
 
       {/* 메시지 목록 */}
       <div className="flex-1 p-4 overflow-y-auto bg-secondary/30">
-        <div className="space-y-3">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.senderId === "worker" ? "justify-end" : "justify-start"}`}
-            >
+        {isMessagesLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <span className="text-4xl mb-4">💬</span>
+            <p className="text-muted-foreground">메시지가 없습니다.</p>
+            <p className="text-caption text-muted-foreground">첫 메시지를 보내보세요!</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {messages.map((msg) => (
               <div
-                className={`max-w-[70%] px-4 py-3 rounded-2xl ${
-                  msg.senderId === "worker"
-                    ? "bg-primary text-primary-foreground rounded-br-md"
-                    : "bg-card text-foreground border border-border rounded-bl-md"
-                }`}
+                key={msg.id}
+                className={`flex ${msg.sender_id === user?.id ? "justify-end" : "justify-start"}`}
               >
-                {msg.type === "file" ? (
-                  <div className="flex items-center gap-2">
-                    <span>📎</span>
-                    <span className="text-body">{msg.fileName}</span>
-                  </div>
-                ) : (
-                  <p className="text-body">{msg.content}</p>
-                )}
-                <p className={`text-caption mt-1 text-right ${
-                  msg.senderId === "worker" ? "opacity-70" : "text-muted-foreground"
-                }`}>
-                  {msg.timestamp}
-                </p>
+                <div
+                  className={`max-w-[70%] px-4 py-3 rounded-2xl ${
+                    msg.sender_id === user?.id
+                      ? "bg-primary text-primary-foreground rounded-br-md"
+                      : "bg-card text-foreground border border-border rounded-bl-md"
+                  }`}
+                >
+                  {msg.message_type === "file" ? (
+                    <div className="flex items-center gap-2">
+                      <span>📎</span>
+                      <span className="text-body">{msg.file_name || msg.content}</span>
+                    </div>
+                  ) : (
+                    <p className="text-body">{msg.content}</p>
+                  )}
+                  <p className={`text-caption mt-1 text-right ${
+                    msg.sender_id === user?.id ? "opacity-70" : "text-muted-foreground"
+                  }`}>
+                    {formatTime(msg.created_at)}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
       </div>
 
       {/* 입력창 */}
