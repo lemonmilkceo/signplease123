@@ -306,18 +306,20 @@
 | Input | ✅ | 완료 |
 | Card | ✅ | 완료 |
 | ProgressBar | ✅ | 완료 |
+| SignatureCanvas | ✅ | 완료 (분리됨) |
+| ShareContractModal | ✅ | 완료 (분리됨) |
+| NoCreditModal | ✅ | 완료 (크레딧 부족 모달) |
+| CreditsBadge | ✅ | 완료 (크레딧 표시) |
+| AllowanceCalculator | ✅ | 완료 (수당 계산기) |
+| GuestModeModal | ✅ | 완료 (둘러보기 모드 가입 유도) |
+| NotificationBell | ✅ | 완료 |
 | AppDrawer | ❌ | 미구현 (사이드 메뉴) |
-| CreditsBadge | ❌ | 미구현 (크레딧 표시) |
 | NavLink | ❌ | 미구현 |
-| NoCreditModal | ❌ | 미구현 (크레딧 부족 모달) |
-| PDFPreviewModal | ❌ | 미구현 |
-| ShareContractModal | ⚠️ | 인라인으로 구현됨 (분리 필요) |
-| SignatureCanvas | ⚠️ | 인라인으로 구현됨 (분리 필요) |
-| SupportChat | ❌ | 미구현 (AI 고객지원) |
+| PDFPreviewModal | ⚠️ | print API 사용 (utils에 구현) |
+| SupportChat | ⚠️ | Support 페이지에 인라인 구현 |
 | WorkerReviewModal | ❌ | 미구현 |
-| AllowanceCalculator | ❌ | 미구현 (수당 계산기) |
-| ChatRoomList | ⚠️ | 인라인으로 구현됨 (분리 필요) |
-| ChatView | ⚠️ | 인라인으로 구현됨 (분리 필요) |
+| ChatRoomList | ⚠️ | Chat 페이지에 인라인 구현 (분리 가능) |
+| ChatView | ⚠️ | Chat 페이지에 인라인 구현 (분리 가능) |
 
 ---
 

@@ -7,14 +7,13 @@ interface SignatureCanvasProps {
   strokeWidth?: number;
   backgroundColor?: string;
   className?: string;
-  onSignatureChange?: (hasSignature: boolean) => void;
+  onSign?: () => void;
 }
 
 export interface SignatureCanvasRef {
   clear: () => void;
   isEmpty: () => boolean;
-  toDataURL: (type?: string, quality?: number) => string;
-  toBlob: (callback: (blob: Blob | null) => void, type?: string, quality?: number) => void;
+  toDataURL: (type?: string) => string;
 }
 
 const SignatureCanvas = forwardRef<SignatureCanvasRef, SignatureCanvasProps>(
@@ -22,23 +21,21 @@ const SignatureCanvas = forwardRef<SignatureCanvasRef, SignatureCanvasProps>(
     {
       width = 350,
       height = 150,
-      strokeColor = "#000000",
+      strokeColor = "#000",
       strokeWidth = 2,
-      backgroundColor = "#ffffff",
+      backgroundColor = "#fff",
       className = "",
-      onSignatureChange,
+      onSign,
     },
     ref
   ) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isDrawing, setIsDrawing] = useState(false);
-    const [hasSignature, setHasSignature] = useState(false);
+    const [hasDrawn, setHasDrawn] = useState(false);
 
-    // 캔버스 초기화
     useEffect(() => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
@@ -50,47 +47,38 @@ const SignatureCanvas = forwardRef<SignatureCanvasRef, SignatureCanvasProps>(
       ctx.lineJoin = "round";
     }, [backgroundColor, strokeColor, strokeWidth]);
 
-    // 외부에서 접근 가능한 메서드들
     useImperativeHandle(ref, () => ({
       clear: () => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
-
         ctx.fillStyle = backgroundColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        setHasSignature(false);
-        onSignatureChange?.(false);
+        setHasDrawn(false);
       },
-      isEmpty: () => !hasSignature,
-      toDataURL: (type = "image/png", quality = 1) => {
-        return canvasRef.current?.toDataURL(type, quality) || "";
-      },
-      toBlob: (callback, type = "image/png", quality = 1) => {
-        canvasRef.current?.toBlob(callback, type, quality);
+      isEmpty: () => !hasDrawn,
+      toDataURL: (type = "image/png") => {
+        return canvasRef.current?.toDataURL(type) || "";
       },
     }));
 
-    const getCoordinates = (
+    const getPosition = (
       e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
-    ): { x: number; y: number } | null => {
+    ) => {
       const canvas = canvasRef.current;
-      if (!canvas) return null;
+      if (!canvas) return { x: 0, y: 0 };
 
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
 
       if ("touches" in e) {
-        const touch = e.touches[0];
         return {
-          x: (touch.clientX - rect.left) * scaleX,
-          y: (touch.clientY - rect.top) * scaleY,
+          x: (e.touches[0].clientX - rect.left) * scaleX,
+          y: (e.touches[0].clientY - rect.top) * scaleY,
         };
       }
-
       return {
         x: (e.clientX - rect.left) * scaleX,
         y: (e.clientY - rect.top) * scaleY,
@@ -100,36 +88,36 @@ const SignatureCanvas = forwardRef<SignatureCanvasRef, SignatureCanvasProps>(
     const startDrawing = (
       e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
     ) => {
-      const coords = getCoordinates(e);
-      if (!coords) return;
-
+      e.preventDefault();
+      setIsDrawing(true);
       const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      setIsDrawing(true);
+      const { x, y } = getPosition(e);
       ctx.beginPath();
-      ctx.moveTo(coords.x, coords.y);
+      ctx.moveTo(x, y);
     };
 
     const draw = (
       e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
     ) => {
       if (!isDrawing) return;
-
-      const coords = getCoordinates(e);
-      if (!coords) return;
+      e.preventDefault();
 
       const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      ctx.lineTo(coords.x, coords.y);
+      const { x, y } = getPosition(e);
+      ctx.lineTo(x, y);
       ctx.stroke();
 
-      if (!hasSignature) {
-        setHasSignature(true);
-        onSignatureChange?.(true);
+      if (!hasDrawn) {
+        setHasDrawn(true);
+        onSign?.();
       }
     };
 

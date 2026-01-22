@@ -7,6 +7,8 @@ interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   isLoading: boolean;
+  isGuest: boolean;
+  supabase: typeof supabase;
   signUp: (email: string, password: string, metadata?: { name?: string; phone?: string }) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -172,11 +174,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // 게스트 모드 여부 (로그인하지 않은 상태)
+  const isGuest = !user && !isLoading;
+
   const value = {
     user,
     session,
     profile,
     isLoading,
+    isGuest,
+    supabase,
     signUp,
     signIn,
     signOut,
