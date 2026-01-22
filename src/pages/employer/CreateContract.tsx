@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Input } from "../../components/ui";
+import { Button, Input, ProgressBar } from "../../components/ui";
 import AllowanceCalculator from "../../components/AllowanceCalculator";
 
 type Step =
@@ -136,12 +136,7 @@ export default function CreateContract() {
               {currentStep + 1} / {STEPS.length}
             </span>
           </div>
-          <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+          <ProgressBar value={progress} className="h-1.5" />
         </div>
       </header>
 

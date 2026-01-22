@@ -1,6 +1,29 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useReducer, useCallback, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase, Profile } from "../lib/supabase";
+import { logger } from "../utils";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface AuthState {
+  user: User | null;
+  session: Session | null;
+  profile: Profile | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
+type AuthAction =
+  | { type: "AUTH_LOADING" }
+  | { type: "AUTH_SUCCESS"; payload: { user: User; session: Session } }
+  | { type: "AUTH_ERROR"; payload: string }
+  | { type: "AUTH_LOGOUT" }
+  | { type: "PROFILE_LOADED"; payload: Profile | null }
+  | { type: "PROFILE_UPDATED"; payload: Profile }
+  | { type: "SET_LOADING"; payload: boolean }
+  | { type: "CLEAR_ERROR" };
 
 interface AuthContextType {
   user: User | null;
@@ -8,24 +31,100 @@ interface AuthContextType {
   profile: Profile | null;
   isLoading: boolean;
   isGuest: boolean;
+  error: string | null;
   supabase: typeof supabase;
   signUp: (email: string, password: string, metadata?: { name?: string; phone?: string }) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
+  clearError: () => void;
 }
+
+// ============================================================================
+// Reducer
+// ============================================================================
+
+const initialState: AuthState = {
+  user: null,
+  session: null,
+  profile: null,
+  isLoading: true,
+  error: null,
+};
+
+function authReducer(state: AuthState, action: AuthAction): AuthState {
+  switch (action.type) {
+    case "AUTH_LOADING":
+      return {
+        ...state,
+        isLoading: true,
+        error: null,
+      };
+
+    case "AUTH_SUCCESS":
+      return {
+        ...state,
+        user: action.payload.user,
+        session: action.payload.session,
+        isLoading: false,
+        error: null,
+      };
+
+    case "AUTH_ERROR":
+      return {
+        ...state,
+        isLoading: false,
+        error: action.payload,
+      };
+
+    case "AUTH_LOGOUT":
+      return {
+        ...initialState,
+        isLoading: false,
+      };
+
+    case "PROFILE_LOADED":
+      return {
+        ...state,
+        profile: action.payload,
+        isLoading: false,
+      };
+
+    case "PROFILE_UPDATED":
+      return {
+        ...state,
+        profile: action.payload,
+      };
+
+    case "SET_LOADING":
+      return {
+        ...state,
+        isLoading: action.payload,
+      };
+
+    case "CLEAR_ERROR":
+      return {
+        ...state,
+        error: null,
+      };
+
+    default:
+      return state;
+  }
+}
+
+// ============================================================================
+// Context
+// ============================================================================
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [state, dispatch] = useReducer(authReducer, initialState);
 
   // 프로필 가져오기
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -34,34 +133,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (error) {
-        console.error("Error fetching profile:", error);
+        logger.error("Error fetching profile:", error);
         return null;
       }
 
       return data as Profile;
     } catch (error) {
-      console.error("Error fetching profile:", error);
+      logger.error("Error fetching profile:", error);
       return null;
     }
-  };
+  }, []);
 
   // 초기 세션 확인
   useEffect(() => {
     const initAuth = async () => {
       try {
+        dispatch({ type: "AUTH_LOADING" });
+
         const { data: { session } } = await supabase.auth.getSession();
-        
-        setSession(session);
-        setUser(session?.user ?? null);
 
         if (session?.user) {
+          dispatch({
+            type: "AUTH_SUCCESS",
+            payload: { user: session.user, session },
+          });
+
           const profile = await fetchProfile(session.user.id);
-          setProfile(profile);
+          dispatch({ type: "PROFILE_LOADED", payload: profile });
+        } else {
+          dispatch({ type: "SET_LOADING", payload: false });
         }
       } catch (error) {
-        console.error("Error initializing auth:", error);
-      } finally {
-        setIsLoading(false);
+        logger.error("Error initializing auth:", error);
+        dispatch({
+          type: "AUTH_ERROR",
+          payload: "인증 초기화에 실패했습니다",
+        });
       }
     };
 
@@ -70,32 +177,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Auth 상태 변경 리스너
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+        logger.info("Auth state changed:", event);
 
         if (session?.user) {
-          const profile = await fetchProfile(session.user.id);
-          setProfile(profile);
-        } else {
-          setProfile(null);
-        }
+          dispatch({
+            type: "AUTH_SUCCESS",
+            payload: { user: session.user, session },
+          });
 
-        setIsLoading(false);
+          const profile = await fetchProfile(session.user.id);
+          dispatch({ type: "PROFILE_LOADED", payload: profile });
+        } else {
+          dispatch({ type: "AUTH_LOGOUT" });
+        }
       }
     );
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchProfile]);
 
   // 회원가입
-  const signUp = async (
+  const signUp = useCallback(async (
     email: string,
     password: string,
     metadata?: { name?: string; phone?: string }
-  ) => {
+  ): Promise<{ error: Error | null }> => {
     try {
+      dispatch({ type: "AUTH_LOADING" });
+
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -105,44 +216,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
+        dispatch({ type: "AUTH_ERROR", payload: error.message });
         return { error: new Error(error.message) };
       }
 
       return { error: null };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "회원가입 실패";
+      dispatch({ type: "AUTH_ERROR", payload: errorMessage });
       return { error: error as Error };
     }
-  };
+  }, []);
 
   // 로그인
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (
+    email: string,
+    password: string
+  ): Promise<{ error: Error | null }> => {
     try {
+      dispatch({ type: "AUTH_LOADING" });
+
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
+        dispatch({ type: "AUTH_ERROR", payload: error.message });
         return { error: new Error(error.message) };
       }
 
       return { error: null };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "로그인 실패";
+      dispatch({ type: "AUTH_ERROR", payload: errorMessage });
       return { error: error as Error };
     }
-  };
+  }, []);
 
   // 로그아웃
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-  };
+    dispatch({ type: "AUTH_LOGOUT" });
+  }, []);
 
   // 프로필 업데이트
-  const updateProfile = async (updates: Partial<Profile>) => {
-    if (!user) {
+  const updateProfile = useCallback(async (
+    updates: Partial<Profile>
+  ): Promise<{ error: Error | null }> => {
+    if (!state.user) {
       return { error: new Error("Not authenticated") };
     }
 
@@ -150,45 +272,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase
         .from("profiles")
         .update(updates)
-        .eq("id", user.id);
+        .eq("id", state.user.id);
 
       if (error) {
         return { error: new Error(error.message) };
       }
 
       // 프로필 새로고침
-      const updatedProfile = await fetchProfile(user.id);
-      setProfile(updatedProfile);
+      const updatedProfile = await fetchProfile(state.user.id);
+      if (updatedProfile) {
+        dispatch({ type: "PROFILE_UPDATED", payload: updatedProfile });
+      }
 
       return { error: null };
     } catch (error) {
       return { error: error as Error };
     }
-  };
+  }, [state.user, fetchProfile]);
 
   // 프로필 새로고침
-  const refreshProfile = async () => {
-    if (user) {
-      const profile = await fetchProfile(user.id);
-      setProfile(profile);
+  const refreshProfile = useCallback(async () => {
+    if (state.user) {
+      const profile = await fetchProfile(state.user.id);
+      dispatch({ type: "PROFILE_LOADED", payload: profile });
     }
-  };
+  }, [state.user, fetchProfile]);
+
+  // 에러 클리어
+  const clearError = useCallback(() => {
+    dispatch({ type: "CLEAR_ERROR" });
+  }, []);
 
   // 게스트 모드 여부 (로그인하지 않은 상태)
-  const isGuest = !user && !isLoading;
+  const isGuest = !state.user && !state.isLoading;
 
-  const value = {
-    user,
-    session,
-    profile,
-    isLoading,
+  const value: AuthContextType = {
+    user: state.user,
+    session: state.session,
+    profile: state.profile,
+    isLoading: state.isLoading,
     isGuest,
+    error: state.error,
     supabase,
     signUp,
     signIn,
     signOut,
     updateProfile,
     refreshProfile,
+    clearError,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -200,4 +331,16 @@ export function useAuth() {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
+}
+
+// 인증 상태만 필요한 경우 사용 (불필요한 리렌더링 방지용)
+export function useAuthState() {
+  const { user, session, profile, isLoading, isGuest, error } = useAuth();
+  return { user, session, profile, isLoading, isGuest, error };
+}
+
+// 인증 액션만 필요한 경우 사용
+export function useAuthActions() {
+  const { signUp, signIn, signOut, updateProfile, refreshProfile, clearError } = useAuth();
+  return { signUp, signIn, signOut, updateProfile, refreshProfile, clearError };
 }

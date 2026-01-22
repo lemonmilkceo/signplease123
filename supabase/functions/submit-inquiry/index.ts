@@ -1,10 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeaders, handleCorsPreFlight, jsonResponse, errorResponse, ERROR_MESSAGES } from "../_shared/cors.ts";
+import { rateLimiters, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 interface InquiryInput {
   category: "general" | "payment" | "contract" | "bug" | "other";
@@ -14,23 +11,26 @@ interface InquiryInput {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return handleCorsPreFlight(origin);
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
     const { category, title, content, email }: InquiryInput = await req.json();
 
-    if (!category || !title || !content) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // 입력 검증
+    if (!category || !title?.trim() || !content?.trim()) {
+      return errorResponse("카테고리, 제목, 내용을 모두 입력해주세요.", 400, origin);
+    }
+
+    // Rate Limiting (IP 기반)
+    const identifier = req.headers.get("x-forwarded-for") || "anonymous";
+    const rateLimitResult = rateLimiters.general.check(identifier);
+    if (!rateLimitResult.allowed) {
+      return createRateLimitResponse(rateLimitResult, corsHeaders);
     }
 
     // 사용자 정보 (선택적)
@@ -57,24 +57,18 @@ serve(async (req) => {
       timestamp: new Date().toISOString(),
     });
 
-    // 실제로는 이메일 발송 또는 Slack 알림 등 연동
-    // await sendEmail({ to: "support@signplease.kr", subject: title, body: content });
+    // TODO: 실제 구현 시
+    // 1. inquiries 테이블에 저장
+    // 2. 이메일 발송 (Resend, SendGrid 등)
+    // 3. Slack/Discord 알림
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "문의가 접수되었습니다. 영업일 기준 1-2일 내에 답변드리겠습니다.",
-        inquiryId: crypto.randomUUID(),
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return jsonResponse({
+      success: true,
+      message: "문의가 접수되었습니다. 영업일 기준 1-2일 내에 답변드리겠습니다.",
+      inquiryId: crypto.randomUUID(),
+    }, 200, origin);
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("Submit inquiry error:", error);
+    return errorResponse(ERROR_MESSAGES.INTERNAL_ERROR, 500, origin);
   }
 });

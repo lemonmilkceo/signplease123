@@ -12,7 +12,7 @@ export default function CreditsBadge({
   showPurchaseLink = true,
   className = "",
 }: CreditsBadgeProps) {
-  const { credits, isLoading } = useCredits();
+  const { totalContractCredits, totalLegalCredits, isLoading } = useCredits();
 
   if (isLoading) {
     return (
@@ -29,7 +29,7 @@ export default function CreditsBadge({
       >
         <span className="text-sm">📄</span>
         <span className="text-caption font-semibold text-foreground">
-          {credits.contracts}
+          {totalContractCredits}
         </span>
       </Link>
     );
@@ -53,12 +53,12 @@ export default function CreditsBadge({
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-secondary rounded-lg p-3 text-center">
             <span className="text-2xl block mb-1">📄</span>
-            <p className="text-display font-bold text-foreground">{credits.contracts}</p>
+            <p className="text-display font-bold text-foreground">{totalContractCredits}</p>
             <p className="text-caption text-muted-foreground">계약서</p>
           </div>
           <div className="bg-secondary rounded-lg p-3 text-center">
             <span className="text-2xl block mb-1">⚖️</span>
-            <p className="text-display font-bold text-foreground">{credits.legalReviews}</p>
+            <p className="text-display font-bold text-foreground">{totalLegalCredits}</p>
             <p className="text-caption text-muted-foreground">법률검토</p>
           </div>
         </div>
@@ -74,14 +74,14 @@ export default function CreditsBadge({
       <div className="flex items-center gap-1.5">
         <span className="text-sm">📄</span>
         <span className="text-body font-semibold text-foreground">
-          {credits.contracts}건
+          {totalContractCredits}건
         </span>
       </div>
       <div className="w-px h-4 bg-border" />
       <div className="flex items-center gap-1.5">
         <span className="text-sm">⚖️</span>
         <span className="text-body font-semibold text-foreground">
-          {credits.legalReviews}회
+          {totalLegalCredits}회
         </span>
       </div>
       {showPurchaseLink && (

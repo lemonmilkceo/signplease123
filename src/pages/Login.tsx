@@ -1,16 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
-import { supabase } from "../lib/supabase";
+import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../components/Toast";
+import { ChevronLeftIcon, EyeIcon, EyeOffIcon } from "../components/icons";
+import { translateAuthError, logger } from "../utils";
 
 function Login() {
   const navigate = useNavigate();
+  const { signIn, profile, user, isLoading: authLoading } = useAuth();
+  const { toast: _toast } = useToast();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 이미 로그인된 상태면 리다이렉트
+  useEffect(() => {
+    if (!authLoading && user) {
+      if (profile?.role) {
+        navigate(profile.role === "employer" ? "/employer" : "/worker");
+      } else {
+        navigate("/select-role");
+      }
+    }
+  }, [user, profile, authLoading, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,39 +39,21 @@ function Login() {
         ? `${identifier.replace(/\D/g, "")}@signplease.app`
         : identifier.trim();
       
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      logger.action("login_attempt", { isPhone });
+      
+      const { error: authError } = await signIn(email, password);
 
       if (authError) {
-        console.error("Login error:", authError);
-        if (authError.message.includes("Invalid login credentials")) {
-          setError("이메일/전화번호 또는 비밀번호가 올바르지 않습니다");
-        } else {
-          setError(`로그인 실패: ${authError.message}`);
-        }
+        logger.warn("Login failed", authError.message);
+        setError(translateAuthError(authError.message));
         return;
       }
 
-      if (data.user) {
-        // 프로필에서 역할 확인
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", data.user.id)
-          .single();
-
-        if (profile?.role) {
-          // 이미 역할이 설정되어 있으면 해당 대시보드로 이동
-          navigate(profile.role === "employer" ? "/employer" : "/worker");
-        } else {
-          // 역할이 없으면 역할 선택 페이지로
-          navigate("/select-role");
-        }
-      }
+      logger.action("login_success");
+      // AuthContext의 onAuthStateChange가 처리하므로 여기서는 따로 리다이렉트 불필요
+      // useEffect에서 자동으로 리다이렉트됨
     } catch (err) {
-      console.error("Login error:", err);
+      logger.error("Login error", err);
       setError("로그인 중 오류가 발생했습니다");
     } finally {
       setIsLoading(false);
@@ -66,17 +63,16 @@ function Login() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* 헤더 - 뒤로가기 + 타이틀 */}
-      <div className="flex items-center gap-3 p-4 border-b border-border">
+      <header className="flex items-center gap-3 p-4 border-b border-border">
         <button 
           onClick={() => navigate("/onboarding")}
-          className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors"
+          aria-label="뒤로 가기"
+          className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <svg className="w-5 h-5 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+          <ChevronLeftIcon className="w-5 h-5 text-foreground" />
         </button>
         <h1 className="text-heading text-foreground">로그인</h1>
-      </div>
+      </header>
 
       {/* 폼 영역 */}
       <div className="flex-1 p-6 flex flex-col">
@@ -88,7 +84,11 @@ function Login() {
           <form onSubmit={handleLogin} className="space-y-4">
             {/* 에러 메시지 */}
             {error && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-caption">
+              <div 
+                role="alert"
+                aria-live="assertive"
+                className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-caption"
+              >
                 {error}
               </div>
             )}
@@ -116,32 +116,16 @@ function Login() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-[38px] text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                aria-pressed={showPassword}
+                className="absolute right-4 top-[38px] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
-                {showPassword ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
+                {showPassword ? <EyeOffIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
               </button>
             </div>
             
-            {/* 로그인 유지 + 비밀번호 찾기 */}
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                />
-                <span className="text-caption text-muted-foreground">로그인 유지</span>
-              </label>
+            {/* 비밀번호 찾기 (로그인 유지 제거) */}
+            <div className="flex items-center justify-end">
               <button
                 type="button"
                 onClick={() => navigate("/forgot-password")}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
+import { useToast } from "../components/Toast";
 import { supabase } from "../lib/supabase";
 
 interface UserProfile {
@@ -14,6 +15,7 @@ interface UserProfile {
 
 export default function Profile() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile>({
@@ -72,7 +74,7 @@ export default function Profile() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        alert("로그인이 필요합니다");
+        toast.error("로그인이 필요합니다");
         return;
       }
 
@@ -88,23 +90,22 @@ export default function Profile() {
 
       if (error) {
         console.error("Profile update error:", error);
-        alert("프로필 저장에 실패했습니다");
+        toast.error("프로필 저장에 실패했습니다");
         return;
       }
 
       setIsEditing(false);
-      alert("프로필이 저장되었습니다.");
+      toast.success("프로필이 저장되었습니다");
     } catch (err) {
       console.error("Error saving profile:", err);
-      alert("오류가 발생했습니다");
+      toast.error("오류가 발생했습니다");
     }
   };
 
   const handleLogout = async () => {
-    if (confirm("로그아웃 하시겠습니까?")) {
-      await supabase.auth.signOut();
-      navigate("/");
-    }
+    await supabase.auth.signOut();
+    toast.info("로그아웃되었습니다");
+    navigate("/");
   };
 
   if (isLoading) {

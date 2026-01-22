@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Input } from "../components/ui";
 import { supabase } from "../lib/supabase";
+import { AUTH_ERRORS, logger } from "../utils";
 
 function ResetPassword() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -19,23 +21,81 @@ function ResetPassword() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        logger.debug("Checking reset password session");
+        
+        // 먼저 현재 세션 확인
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          logger.warn("Session check error", sessionError);
+        }
         
         if (session) {
+          logger.debug("Valid session found");
           setIsValidSession(true);
-        } else {
-          // URL에서 토큰 확인 (Supabase 리다이렉트 후)
-          const hashParams = new URLSearchParams(window.location.hash.substring(1));
-          const accessToken = hashParams.get("access_token");
+          setIsCheckingSession(false);
+          return;
+        }
+
+        // URL 해시에서 토큰 확인 (Supabase 리다이렉트 후)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+        const type = hashParams.get("type");
+        
+        logger.debug("Hash params", { hasAccessToken: !!accessToken, type });
+        
+        if (accessToken && type === "recovery") {
+          // 토큰으로 세션 설정
+          const { data, error: setSessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || "",
+          });
           
-          if (accessToken) {
+          if (setSessionError) {
+            logger.error("Set session error", setSessionError);
+            setError(AUTH_ERRORS.RESET_LINK_EXPIRED);
+          } else if (data.session) {
+            logger.debug("Session set successfully");
             setIsValidSession(true);
+            // URL 해시 정리
+            window.history.replaceState(null, "", window.location.pathname);
           } else {
-            setError("유효하지 않은 링크입니다. 비밀번호 찾기를 다시 진행해주세요.");
+            setError(AUTH_ERRORS.RESET_LINK_EXPIRED);
+          }
+        } else if (accessToken) {
+          // type이 없어도 access_token이 있으면 시도
+          const { data, error: setSessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || "",
+          });
+          
+          if (!setSessionError && data.session) {
+            setIsValidSession(true);
+            window.history.replaceState(null, "", window.location.pathname);
+          } else {
+            setError(AUTH_ERRORS.RESET_LINK_EXPIRED);
+          }
+        } else {
+          // URL 쿼리 파라미터 확인 (code flow)
+          const code = searchParams.get("code");
+          if (code) {
+            const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+            
+            if (exchangeError) {
+              logger.error("Code exchange error", exchangeError);
+              setError(AUTH_ERRORS.RESET_LINK_EXPIRED);
+            } else if (data.session) {
+              setIsValidSession(true);
+            } else {
+              setError(AUTH_ERRORS.RESET_LINK_EXPIRED);
+            }
+          } else {
+            setError(AUTH_ERRORS.RESET_LINK_EXPIRED);
           }
         }
       } catch (err) {
-        console.error("Session check error:", err);
+        logger.error("Session check error", err);
         setError("세션 확인에 실패했습니다.");
       } finally {
         setIsCheckingSession(false);
@@ -43,15 +103,15 @@ function ResetPassword() {
     };
 
     checkSession();
-  }, []);
+  }, [searchParams]);
 
   const validatePassword = (): boolean => {
     if (password.length < 6) {
-      setError("비밀번호는 6자 이상이어야 합니다");
+      setError(AUTH_ERRORS.WEAK_PASSWORD);
       return false;
     }
     if (password !== confirmPassword) {
-      setError("비밀번호가 일치하지 않습니다");
+      setError(AUTH_ERRORS.PASSWORD_MISMATCH);
       return false;
     }
     return true;
@@ -64,6 +124,7 @@ function ResetPassword() {
     if (!validatePassword()) return;
 
     setIsLoading(true);
+    logger.action("password_reset_attempt");
     
     try {
       // Supabase 비밀번호 업데이트
@@ -72,13 +133,19 @@ function ResetPassword() {
       });
 
       if (updateError) {
+        logger.error("Password update error", updateError);
         throw updateError;
       }
 
+      logger.action("password_reset_success");
+      
+      // 세션 로그아웃 (새 비밀번호로 다시 로그인하도록)
+      await supabase.auth.signOut();
+      
       setIsSuccess(true);
     } catch (err) {
-      console.error("Password update error:", err);
-      setError("비밀번호 변경에 실패했습니다. 다시 시도해주세요.");
+      logger.error("Password update error", err);
+      setError(AUTH_ERRORS.RESET_FAILED);
     } finally {
       setIsLoading(false);
     }

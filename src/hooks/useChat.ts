@@ -11,7 +11,7 @@ interface ChatRoomWithDetails extends ChatRoom {
 }
 
 export function useChat() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [chatRooms, setChatRooms] = useState<ChatRoomWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);

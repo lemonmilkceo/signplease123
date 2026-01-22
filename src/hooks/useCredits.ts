@@ -1,12 +1,24 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase, UserCredits, LegalReviewCredits } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
+import { logger } from "../utils";
+import { API_ERRORS } from "../utils/errorMessages";
 
+/**
+ * 크레딧 관리 훅
+ * 
+ * 중요: 크레딧 차감은 Edge Function에서 수행됩니다.
+ * 이 훅은 주로 크레딧 조회 및 표시 목적으로 사용됩니다.
+ * 
+ * - 계약서 생성: generate-contract Edge Function에서 차감
+ * - 법률 검토: contract-legal-advice Edge Function에서 차감
+ */
 export function useCredits() {
   const { user } = useAuth();
   const [contractCredits, setContractCredits] = useState<UserCredits | null>(null);
   const [legalCredits, setLegalCredits] = useState<LegalReviewCredits | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // 크레딧 정보 가져오기
   const fetchCredits = useCallback(async () => {
@@ -19,33 +31,91 @@ export function useCredits() {
 
     try {
       setIsLoading(true);
+      setError(null);
 
-      // 계약서 크레딧
-      const { data: contractData } = await supabase
-        .from("user_credits")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+      // 병렬로 크레딧 조회
+      const [contractResult, legalResult] = await Promise.all([
+        supabase
+          .from("user_credits")
+          .select("*")
+          .eq("user_id", user.id)
+          .single(),
+        supabase
+          .from("legal_review_credits")
+          .select("*")
+          .eq("user_id", user.id)
+          .single(),
+      ]);
 
-      // 법률 검토 크레딧
-      const { data: legalData } = await supabase
-        .from("legal_review_credits")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+      if (contractResult.error) {
+        logger.warn("Failed to fetch contract credits", contractResult.error);
+      }
+      if (legalResult.error) {
+        logger.warn("Failed to fetch legal credits", legalResult.error);
+      }
 
-      setContractCredits(contractData as UserCredits);
-      setLegalCredits(legalData as LegalReviewCredits);
-    } catch (error) {
-      console.error("Error fetching credits:", error);
+      setContractCredits(contractResult.data as UserCredits);
+      setLegalCredits(legalResult.data as LegalReviewCredits);
+    } catch (err) {
+      logger.error("Error fetching credits", err);
+      setError(API_ERRORS.CREDIT_CHECK_FAILED);
     } finally {
       setIsLoading(false);
     }
   }, [user]);
 
+  // 사용자 변경 시 크레딧 갱신
   useEffect(() => {
     fetchCredits();
   }, [fetchCredits]);
+
+  // 실시간 크레딧 변경 구독
+  useEffect(() => {
+    if (!user) return;
+
+    const contractSubscription = supabase
+      .channel("user_credits_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_credits",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          logger.debug("Contract credits updated", payload);
+          if (payload.new) {
+            setContractCredits(payload.new as UserCredits);
+          }
+        }
+      )
+      .subscribe();
+
+    const legalSubscription = supabase
+      .channel("legal_credits_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "legal_review_credits",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          logger.debug("Legal credits updated", payload);
+          if (payload.new) {
+            setLegalCredits(payload.new as LegalReviewCredits);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      contractSubscription.unsubscribe();
+      legalSubscription.unsubscribe();
+    };
+  }, [user]);
 
   // 총 계약서 크레딧
   const totalContractCredits = contractCredits
@@ -57,116 +127,100 @@ export function useCredits() {
     ? legalCredits.free_reviews + legalCredits.paid_reviews
     : 0;
 
-  // 계약서 크레딧 사용
+  // 크레딧 충분 여부 확인
+  const hasContractCredits = totalContractCredits > 0;
+  const hasLegalCredits = totalLegalCredits > 0;
+
+  // 무료 크레딧 남은 수
+  const remainingFreeContractCredits = contractCredits?.free_credits || 0;
+  const remainingFreeLegalCredits = legalCredits?.free_reviews || 0;
+
+  /**
+   * @deprecated 크레딧 차감은 Edge Function에서 수행됩니다.
+   * 이 함수는 하위 호환성을 위해 남겨두었습니다.
+   */
   const useContractCredit = async () => {
-    if (!user || totalContractCredits <= 0) {
-      return { success: false, error: new Error("No credits available") };
-    }
-
-    try {
-      // 무료 크레딧 먼저 사용
-      const updates: Partial<UserCredits> = {
-        total_used: (contractCredits?.total_used || 0) + 1,
-      };
-
-      if (contractCredits && contractCredits.free_credits > 0) {
-        updates.free_credits = contractCredits.free_credits - 1;
-      } else if (contractCredits && contractCredits.paid_credits > 0) {
-        updates.paid_credits = contractCredits.paid_credits - 1;
-      }
-
-      const { error } = await supabase
-        .from("user_credits")
-        .update(updates)
-        .eq("user_id", user.id);
-
-      if (error) {
-        return { success: false, error: new Error(error.message) };
-      }
-
-      await fetchCredits();
-      return { success: true, error: null };
-    } catch (error) {
-      return { success: false, error: error as Error };
-    }
+    logger.warn("useContractCredit is deprecated. Credits are deducted by Edge Functions.");
+    // Edge Function이 차감을 처리하므로, 여기서는 갱신만 수행
+    await fetchCredits();
+    return { success: true, error: null };
   };
 
-  // 법률 검토 크레딧 사용
+  /**
+   * @deprecated 크레딧 차감은 Edge Function에서 수행됩니다.
+   * 이 함수는 하위 호환성을 위해 남겨두었습니다.
+   */
   const useLegalCredit = async () => {
-    if (!user || totalLegalCredits <= 0) {
-      return { success: false, error: new Error("No credits available") };
-    }
-
-    try {
-      const updates: Partial<LegalReviewCredits> = {
-        total_used: (legalCredits?.total_used || 0) + 1,
-      };
-
-      if (legalCredits && legalCredits.free_reviews > 0) {
-        updates.free_reviews = legalCredits.free_reviews - 1;
-      } else if (legalCredits && legalCredits.paid_reviews > 0) {
-        updates.paid_reviews = legalCredits.paid_reviews - 1;
-      }
-
-      const { error } = await supabase
-        .from("legal_review_credits")
-        .update(updates)
-        .eq("user_id", user.id);
-
-      if (error) {
-        return { success: false, error: new Error(error.message) };
-      }
-
-      await fetchCredits();
-      return { success: true, error: null };
-    } catch (error) {
-      return { success: false, error: error as Error };
-    }
+    logger.warn("useLegalCredit is deprecated. Credits are deducted by Edge Functions.");
+    // Edge Function이 차감을 처리하므로, 여기서는 갱신만 수행
+    await fetchCredits();
+    return { success: true, error: null };
   };
 
-  // 크레딧 충전 (실제 결제 연동 전 mock)
+  /**
+   * 크레딧 충전 (결제 후 호출)
+   * TODO: 실제 결제 연동 시 Edge Function으로 이동
+   */
   const addCredits = async (type: "contract" | "legal", amount: number) => {
     if (!user) {
       return { success: false, error: new Error("Not authenticated") };
     }
 
+    logger.action("add_credits", { type, amount });
+
     try {
       if (type === "contract") {
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from("user_credits")
           .update({
             paid_credits: (contractCredits?.paid_credits || 0) + amount,
           })
           .eq("user_id", user.id);
 
-        if (error) throw error;
+        if (updateError) throw updateError;
       } else {
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from("legal_review_credits")
           .update({
             paid_reviews: (legalCredits?.paid_reviews || 0) + amount,
           })
           .eq("user_id", user.id);
 
-        if (error) throw error;
+        if (updateError) throw updateError;
       }
 
       await fetchCredits();
+      logger.action("add_credits_success", { type, amount });
       return { success: true, error: null };
-    } catch (error) {
-      return { success: false, error: error as Error };
+    } catch (err) {
+      logger.error("Failed to add credits", err);
+      return { success: false, error: err as Error };
     }
   };
 
   return {
+    // 크레딧 데이터
     contractCredits,
     legalCredits,
+    
+    // 계산된 값
     totalContractCredits,
     totalLegalCredits,
+    hasContractCredits,
+    hasLegalCredits,
+    remainingFreeContractCredits,
+    remainingFreeLegalCredits,
+    
+    // 상태
     isLoading,
+    error,
+    
+    // 액션
     fetchCredits,
+    addCredits,
+    
+    // Deprecated (하위 호환성)
     useContractCredit,
     useLegalCredit,
-    addCredits,
   };
 }

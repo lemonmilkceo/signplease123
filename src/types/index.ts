@@ -108,3 +108,74 @@ export interface FilterOptions {
   searchQuery?: string;
   sortBy?: SortOption;
 }
+
+// ============================================================================
+// API Response Types
+// ============================================================================
+
+/** 공통 API 응답 래퍼 */
+export interface ApiResponse<T> {
+  data: T | null;
+  error: ApiError | null;
+  success: boolean;
+}
+
+/** API 에러 타입 */
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+/** 페이지네이션 응답 */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+/** Edge Function 응답 타입들 */
+export interface GenerateContractResponse {
+  content: string;
+  creditsRemaining: number;
+}
+
+export interface ExplainTermResponse {
+  explanation: string;
+}
+
+export interface SupportChatResponse {
+  reply: string;
+}
+
+export interface LegalAdviceResponse {
+  advice: string;
+  issues: LegalReviewIssue[];
+  creditsRemaining: number;
+}
+
+// ============================================================================
+// Component Props Types (공통)
+// ============================================================================
+
+/** 로딩 상태를 가진 컴포넌트 props */
+export interface WithLoading {
+  isLoading?: boolean;
+}
+
+/** 에러 상태를 가진 컴포넌트 props */
+export interface WithError {
+  error?: string | null;
+}
+
+/** 비활성화 가능한 컴포넌트 props */
+export interface Disableable {
+  disabled?: boolean;
+}
+
+/** 자식 요소를 가진 컴포넌트 props */
+export interface WithChildren {
+  children: React.ReactNode;
+}

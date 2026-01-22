@@ -17,7 +17,7 @@ export function useRealtime() {
   const { user, profile } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [channel, setChannel] = useState<RealtimeChannel | null>(null);
+  const [_channel, setChannel] = useState<RealtimeChannel | null>(null);
 
   // 알림 추가
   const addNotification = useCallback((notification: Omit<Notification, "id" | "read" | "createdAt">) => {

@@ -57,18 +57,8 @@ export default function SupportChat({
 
     // AI 응답 요청
     try {
-      const { data, error } = await sendAIMessage(content, "support");
-
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content:
-          error || !data
-            ? "죄송합니다. 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
-            : data,
-        isUser: false,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, aiMessage]);
+      await sendAIMessage(content);
+      // AI 응답은 useAIChat 내부에서 처리됨
     } catch {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),

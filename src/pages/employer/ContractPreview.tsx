@@ -28,7 +28,7 @@ export default function ContractPreview() {
   const { generateContract, isGenerating: isAIGenerating, error: aiError } = useContractGeneration();
 
   const [isGenerating, setIsGenerating] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [_isSaving, setIsSaving] = useState(false);
   const [savedContractId, setSavedContractId] = useState<string | null>(null);
   const [generationStep, setGenerationStep] = useState(0);
   const [showSignature, setShowSignature] = useState(false);

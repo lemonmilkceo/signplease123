@@ -1,7 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
+import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
+import { 
+  VALIDATION_ERRORS, 
+  translateAuthError, 
+  logger,
+  formatPhoneNumber 
+} from "../utils";
 
 interface FormData {
   name: string;
@@ -15,6 +22,7 @@ interface FormData {
 
 function Signup() {
   const navigate = useNavigate();
+  const { user, isLoading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>({
@@ -27,16 +35,16 @@ function Signup() {
     confirmPassword: "",
   });
 
+  // 이미 로그인된 상태면 리다이렉트
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate("/select-role");
+    }
+  }, [user, authLoading, navigate]);
+
   const handleChange = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setError(null);
-  };
-
-  const formatPhoneNumber = (value: string) => {
-    const numbers = value.replace(/\D/g, "");
-    if (numbers.length <= 3) return numbers;
-    if (numbers.length <= 7) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
-    return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
   };
 
   const handlePhoneChange = (value: string) => {
@@ -46,28 +54,28 @@ function Signup() {
 
   const validateForm = (): boolean => {
     if (!formData.name.trim()) {
-      setError("이름을 입력해주세요");
+      setError(VALIDATION_ERRORS.REQUIRED_NAME);
       return false;
     }
     if (!formData.gender) {
-      setError("성별을 선택해주세요");
+      setError(VALIDATION_ERRORS.REQUIRED_GENDER);
       return false;
     }
     if (!formData.birthDate) {
-      setError("생년월일을 입력해주세요");
+      setError(VALIDATION_ERRORS.REQUIRED_BIRTH_DATE);
       return false;
     }
     if (!formData.phone || formData.phone.replace(/\D/g, "").length < 10) {
-      setError("올바른 핸드폰번호를 입력해주세요");
+      setError(VALIDATION_ERRORS.REQUIRED_PHONE);
       return false;
     }
     // 이메일이 입력된 경우에만 이메일 형식 검증
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      setError("올바른 이메일 형식을 입력해주세요");
+      setError(VALIDATION_ERRORS.INVALID_EMAIL_FORMAT);
       return false;
     }
     if (!formData.password || formData.password.length < 6) {
-      setError("비밀번호는 6자 이상이어야 합니다");
+      setError(VALIDATION_ERRORS.REQUIRED_PASSWORD);
       return false;
     }
     if (formData.password !== formData.confirmPassword) {
@@ -87,6 +95,8 @@ function Signup() {
       // 이메일이 없으면 전화번호 기반 가상 이메일 생성
       const authEmail = formData.email.trim() || `${formData.phone.replace(/\D/g, "")}@signplease.app`;
       
+      logger.action("signup_attempt");
+      
       // Supabase Auth 회원가입
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: authEmail,
@@ -102,40 +112,52 @@ function Signup() {
       });
 
       if (authError) {
-        console.error("Auth error:", authError);
-        if (authError.message.includes("already registered")) {
-          setError("이미 가입된 사용자입니다");
-        } else if (authError.message.includes("Invalid email")) {
-          setError("유효하지 않은 이메일입니다");
-        } else {
-          setError(`회원가입 실패: ${authError.message}`);
-        }
+        logger.warn("Signup auth error", authError.message);
+        setError(translateAuthError(authError.message));
         return;
       }
 
       if (authData.user) {
-        // 프로필 업데이트 (트리거로 기본 프로필이 생성됨)
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            name: formData.name,
-            gender: formData.gender,
-            birth_date: formData.birthDate,
-            phone: formData.phone,
-            email: formData.email.trim() || null,
-          })
-          .eq("id", authData.user.id);
+        logger.action("signup_success", { userId: authData.user.id });
+        
+        // 프로필 upsert (트리거로 기본 프로필이 생성되지만 Race Condition 방지)
+        // 재시도 로직으로 트리거 완료 대기
+        const updateProfileWithRetry = async (userId: string, retries = 3): Promise<void> => {
+          for (let attempt = 0; attempt < retries; attempt++) {
+            const { error: profileError } = await supabase
+              .from("profiles")
+              .upsert({
+                id: userId,
+                name: formData.name,
+                gender: formData.gender,
+                birth_date: formData.birthDate,
+                phone: formData.phone,
+                email: formData.email.trim() || authEmail,
+              }, { onConflict: 'id' });
 
-        if (profileError) {
-          console.error("Profile update error:", profileError);
-          // 프로필 업데이트 실패해도 회원가입은 성공으로 처리
-        }
+            if (!profileError) {
+              logger.debug("Profile updated successfully");
+              return; // 성공
+            }
+            
+            logger.debug(`Profile update attempt ${attempt + 1} failed`, profileError);
+            
+            // RLS 에러일 수 있으므로 짧은 대기 후 재시도
+            if (attempt < retries - 1) {
+              await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+            }
+          }
+          // 모든 재시도 실패해도 회원가입은 성공으로 처리
+          logger.warn("Profile update failed after retries, but signup succeeded");
+        };
+
+        await updateProfileWithRetry(authData.user.id);
 
         // 역할 선택 페이지로 이동
         navigate("/select-role");
       }
     } catch (err) {
-      console.error("Signup error:", err);
+      logger.error("Signup error", err);
       setError("회원가입 중 오류가 발생했습니다");
     } finally {
       setIsLoading(false);

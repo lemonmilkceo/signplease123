@@ -1,13 +1,17 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import NotificationBell from "../../components/NotificationBell";
+import ContractCard from "../../components/ContractCard";
+import { EmptyState, ErrorState, ContractListSkeleton } from "../../components/ui";
+import { SearchIcon, PlusIcon, CloseIcon, SortIcon } from "../../components/icons";
 import { useContracts } from "../../hooks/useContracts";
+import { Button } from "../../components/ui";
 
 type Tab = "pending" | "completed" | "folders" | "trash";
 type SortOption = "newest" | "oldest" | "name" | "wage";
 
 export default function EmployerDashboard() {
-  const { contracts, isLoading, error } = useContracts();
+  const { contracts, isLoading, error, fetchContracts } = useContracts();
   const [activeTab, setActiveTab] = useState<Tab>("pending");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -75,14 +79,56 @@ export default function EmployerDashboard() {
     activeTab === "pending" ? (c.status === "pending" || c.status === "draft") : c.status === "completed"
   ).length;
 
-  // 날짜 포맷 함수
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+  // 컨텐츠 렌더링
+  const renderContent = () => {
+    if (isLoading) {
+      return <ContractListSkeleton count={5} />;
+    }
+
+    if (error) {
+      return (
+        <ErrorState
+          message={error.message}
+          suggestion="네트워크 연결을 확인하고 다시 시도해주세요"
+          onRetry={fetchContracts}
+        />
+      );
+    }
+
+    if (filteredContracts.length === 0) {
+      const emptyProps = searchQuery
+        ? { icon: "🔍", message: `"${searchQuery}" 검색 결과가 없습니다` }
+        : activeTab === "pending"
+          ? { 
+              icon: "📝", 
+              message: "대기 중인 계약이 없습니다",
+              action: (
+                <Link to="/employer/create">
+                  <Button variant="primary" size="md">
+                    <span className="flex items-center gap-2">
+                      <PlusIcon className="w-5 h-5" />
+                      계약서 작성하기
+                    </span>
+                  </Button>
+                </Link>
+              )
+            }
+          : { icon: "✅", message: "완료된 계약이 없습니다" };
+
+      return <EmptyState {...emptyProps} />;
+    }
+
+    return (
+      <div className="space-y-3" role="list" aria-label="계약서 목록">
+        {filteredContracts.map((contract) => (
+          <ContractCard key={contract.id} contract={contract} role="employer" />
+        ))}
+      </div>
+    );
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <>
       {/* 헤더 */}
       <header className="sticky top-0 bg-background/80 backdrop-blur-lg border-b border-border z-10">
         <div className="mobile-container py-4">
@@ -97,13 +143,13 @@ export default function EmployerDashboard() {
               {/* 검색 버튼 */}
               <button
                 onClick={() => setShowSearch(!showSearch)}
-                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${
+                aria-label={showSearch ? "검색 닫기" : "검색 열기"}
+                aria-expanded={showSearch}
+                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   showSearch ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground hover:bg-secondary/80"
                 }`}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <SearchIcon className="w-5 h-5" />
               </button>
 
               {/* 알림 벨 */}
@@ -112,12 +158,10 @@ export default function EmployerDashboard() {
               {/* 새 계약서 버튼 */}
               <Link
                 to="/employer/create"
-                className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-body font-semibold hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
+                className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-body font-semibold hover:opacity-90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                새 계약서
+                <PlusIcon className="w-5 h-5" />
+                <span className="sr-only sm:not-sr-only">새 계약서</span>
               </Link>
             </div>
           </div>
@@ -126,25 +170,23 @@ export default function EmployerDashboard() {
           {showSearch && (
             <div className="mb-4 animate-fade-in">
               <div className="relative">
-                <svg className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <SearchIcon className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
-                  type="text"
+                  type="search"
                   placeholder="이름 또는 근무지로 검색..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 bg-secondary border-0 rounded-xl text-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  aria-label="계약서 검색"
+                  className="w-full pl-12 pr-10 py-3 bg-secondary border-0 rounded-xl text-body text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   autoFocus
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="검색어 지우기"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    <CloseIcon className="w-5 h-5" />
                   </button>
                 )}
               </div>
@@ -152,18 +194,21 @@ export default function EmployerDashboard() {
           )}
 
           {/* 탭 네비게이션 */}
-          <nav className="flex gap-2 overflow-x-auto scrollbar-hide -mx-6 px-6">
+          <nav className="flex gap-2 overflow-x-auto scrollbar-hide -mx-6 px-6" role="tablist" aria-label="계약서 필터">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-caption font-medium whitespace-nowrap transition-all ${
+                role="tab"
+                aria-selected={activeTab === tab.key}
+                aria-controls={`tabpanel-${tab.key}`}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-caption font-medium whitespace-nowrap transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   activeTab === tab.key
                     ? "bg-primary text-primary-foreground shadow-md"
                     : "bg-secondary text-muted-foreground hover:bg-secondary/80"
                 }`}
               >
-                <span>{tab.icon}</span>
+                <span aria-hidden="true">{tab.icon}</span>
                 <span>{tab.label}</span>
               </button>
             ))}
@@ -172,23 +217,24 @@ export default function EmployerDashboard() {
       </header>
 
       {/* 컨텐츠 */}
-      <main className="mobile-container py-6">
+      <main className="mobile-container py-6" role="tabpanel" id={`tabpanel-${activeTab}`}>
         {(activeTab === "pending" || activeTab === "completed") && (
           <>
             {/* 정렬 옵션 */}
-            {totalCount > 0 && (
+            {totalCount > 0 && !isLoading && (
               <div className="flex items-center justify-between mb-4">
-                <p className="text-caption text-muted-foreground">
+                <p className="text-caption text-muted-foreground" aria-live="polite">
                   {searchQuery ? `검색 결과 ${filteredContracts.length}건` : `${totalCount}건`}
                 </p>
                 <div className="relative">
                   <button
                     onClick={() => setShowSortMenu(!showSortMenu)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-caption text-foreground hover:bg-secondary/80 transition-colors"
+                    aria-label="정렬 옵션"
+                    aria-expanded={showSortMenu}
+                    aria-haspopup="listbox"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-caption text-foreground hover:bg-secondary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-                    </svg>
+                    <SortIcon className="w-4 h-4" />
                     {sortOptions.find(o => o.key === sortOption)?.label}
                   </button>
                   
@@ -198,16 +244,23 @@ export default function EmployerDashboard() {
                       <div 
                         className="fixed inset-0 z-10" 
                         onClick={() => setShowSortMenu(false)}
+                        aria-hidden="true"
                       />
-                      <div className="absolute right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-lg z-20 py-1 min-w-[120px] animate-fade-in">
+                      <div 
+                        role="listbox"
+                        aria-label="정렬 기준 선택"
+                        className="absolute right-0 top-full mt-2 bg-card border border-border rounded-xl shadow-lg z-20 py-1 min-w-[120px] animate-fade-in"
+                      >
                         {sortOptions.map((option) => (
                           <button
                             key={option.key}
+                            role="option"
+                            aria-selected={sortOption === option.key}
                             onClick={() => {
                               setSortOption(option.key);
                               setShowSortMenu(false);
                             }}
-                            className={`w-full px-4 py-2 text-left text-caption transition-colors ${
+                            className={`w-full px-4 py-2 text-left text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
                               sortOption === option.key
                                 ? "text-primary bg-primary/5"
                                 : "text-foreground hover:bg-secondary"
@@ -223,140 +276,29 @@ export default function EmployerDashboard() {
               </div>
             )}
 
-            {/* 로딩 상태 */}
-            {isLoading ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <div className="animate-spin w-10 h-10 border-3 border-primary border-t-transparent rounded-full mb-4" />
-                <p className="text-body text-muted-foreground">계약서를 불러오는 중...</p>
-              </div>
-            ) : error ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
-                  <span className="text-4xl">⚠️</span>
-                </div>
-                <p className="text-body text-destructive mb-2">오류가 발생했습니다</p>
-                <p className="text-caption text-muted-foreground">{error.message}</p>
-              </div>
-            ) : filteredContracts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mb-4">
-                  <span className="text-4xl">{searchQuery ? "🔍" : activeTab === "pending" ? "📝" : "✅"}</span>
-                </div>
-                <p className="text-body text-muted-foreground mb-2">
-                  {searchQuery 
-                    ? `"${searchQuery}" 검색 결과가 없습니다`
-                    : activeTab === "pending" 
-                      ? "대기 중인 계약이 없습니다" 
-                      : "완료된 계약이 없습니다"
-                  }
-                </p>
-                {!searchQuery && activeTab === "pending" && (
-                  <>
-                    <p className="text-caption text-muted-foreground mb-6">
-                      새 계약서를 작성해보세요!
-                    </p>
-                    <Link
-                      to="/employer/create"
-                      className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-xl text-body font-semibold hover:opacity-90 transition-all"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      계약서 작성하기
-                    </Link>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredContracts.map((contract) => (
-                  <Link
-                    key={contract.id}
-                    to={`/employer/contract/${contract.id}`}
-                    className="block p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-primary/30 transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                          <span className="text-xl">👷</span>
-                        </div>
-                        <div>
-                          <p className="text-body font-semibold text-foreground">{contract.worker_name}</p>
-                          <p className="text-caption text-muted-foreground">{contract.work_place}</p>
-                        </div>
-                      </div>
-                      <span className={`px-2.5 py-1 rounded-lg text-caption font-medium ${
-                        contract.status === "draft"
-                          ? "bg-secondary text-muted-foreground"
-                          : contract.status === "pending"
-                            ? "bg-warning/10 text-warning"
-                            : "bg-success/10 text-success"
-                      }`}>
-                        {contract.status === "draft" ? "작성 중" : contract.status === "pending" ? "서명 대기" : "완료"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-caption">
-                      <span className="text-primary font-medium">시급 {contract.hourly_wage.toLocaleString()}원</span>
-                      <span className="text-muted-foreground">{formatDate(contract.created_at)}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
+            {renderContent()}
           </>
         )}
 
         {activeTab === "folders" && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mb-4">
-              <span className="text-4xl">📁</span>
-            </div>
-            <p className="text-body text-muted-foreground mb-2">폴더가 없습니다</p>
-            <p className="text-caption text-muted-foreground mb-6">
-              계약서를 폴더로 정리해보세요
-            </p>
-            <button className="flex items-center gap-2 border border-primary text-primary px-6 py-3 rounded-xl text-body font-semibold hover:bg-primary/5 transition-all">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              폴더 만들기
-            </button>
-          </div>
+          <EmptyState
+            icon="📁"
+            message="폴더가 없습니다"
+            action={
+              <Button variant="outline" size="md">
+                <span className="flex items-center gap-2">
+                  <PlusIcon className="w-5 h-5" />
+                  폴더 만들기
+                </span>
+              </Button>
+            }
+          />
         )}
 
         {activeTab === "trash" && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mb-4">
-              <span className="text-4xl">🗑️</span>
-            </div>
-            <p className="text-body text-muted-foreground">휴지통이 비어있습니다</p>
-          </div>
+          <EmptyState icon="🗑️" message="휴지통이 비어있습니다" />
         )}
       </main>
-
-      {/* 하단 네비게이션 */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-border safe-area-pb">
-        <div className="flex justify-around items-center max-w-[448px] mx-auto py-2">
-          <Link to="/employer" className="flex flex-col items-center gap-1 px-6 py-2 text-primary">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span className="text-caption font-medium">계약</span>
-          </Link>
-          <Link to="/employer/chat" className="flex flex-col items-center gap-1 px-6 py-2 text-muted-foreground hover:text-foreground transition-colors">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <span className="text-caption font-medium">채팅</span>
-          </Link>
-          <Link to="/profile" className="flex flex-col items-center gap-1 px-6 py-2 text-muted-foreground hover:text-foreground transition-colors">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span className="text-caption font-medium">설정</span>
-          </Link>
-        </div>
-      </nav>
-    </div>
+    </>
   );
 }

@@ -146,7 +146,7 @@ export default function ShareModal({
             </button>
 
             {/* 더보기 (네이티브 공유) */}
-            {navigator.share && (
+            {typeof navigator.share === "function" && (
               <button
                 onClick={handleNativeShare}
                 className="flex flex-col items-center gap-2"

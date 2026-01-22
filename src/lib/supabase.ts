@@ -3,13 +3,18 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// 개발 환경에서만 경고, 프로덕션에서는 에러
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Supabase credentials not found. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env");
+  const errorMessage = "Supabase credentials are required. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env";
+  if (import.meta.env.PROD) {
+    throw new Error(errorMessage);
+  }
+  console.error(errorMessage);
 }
 
 export const supabase = createClient(
-  supabaseUrl || "https://placeholder.supabase.co",
-  supabaseAnonKey || "placeholder-key"
+  supabaseUrl || "",
+  supabaseAnonKey || ""
 );
 
 // Edge Functions 호출 헬퍼
@@ -34,6 +39,8 @@ export interface Profile {
   email: string;
   name: string | null;
   phone: string | null;
+  gender: "male" | "female" | null;
+  birth_date: string | null;
   role: "employer" | "worker" | null;
   bank_name: string | null;
   account_number: string | null;

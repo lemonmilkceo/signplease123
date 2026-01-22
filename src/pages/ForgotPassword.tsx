@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input } from "../components/ui";
 import { supabase } from "../lib/supabase";
+import { AUTH_ERRORS, logger } from "../utils";
 
 function ForgotPassword() {
   const navigate = useNavigate();
@@ -23,10 +24,12 @@ function ForgotPassword() {
       
       if (!isEmail) {
         // 전화번호인 경우 - 현재 Supabase는 이메일만 지원
-        setError("비밀번호 재설정은 이메일로만 가능합니다. 이메일을 입력해주세요.");
+        setError(AUTH_ERRORS.EMAIL_ONLY_RESET);
         setIsLoading(false);
         return;
       }
+
+      logger.action("password_reset_request", { email: identifier });
 
       // Supabase 비밀번호 재설정 이메일 발송
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
@@ -37,13 +40,15 @@ function ForgotPassword() {
       );
 
       if (resetError) {
+        logger.error("Password reset email error", resetError);
         throw resetError;
       }
 
+      logger.action("password_reset_email_sent");
       setIsSent(true);
     } catch (err) {
-      console.error("Password reset error:", err);
-      setError("비밀번호 재설정 이메일 발송에 실패했습니다. 다시 시도해주세요.");
+      logger.error("Password reset error", err);
+      setError(AUTH_ERRORS.RESET_FAILED);
     } finally {
       setIsLoading(false);
     }

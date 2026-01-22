@@ -33,11 +33,19 @@
 ## 🛠️ 기술 스택
 
 ### Frontend
-- **React 18** + **TypeScript**
-- **Vite** - 빌드 도구
-- **Tailwind CSS** - 스타일링
-- **Framer Motion** - 애니메이션
-- **React Router DOM** - 라우팅
+- **React 18** + **TypeScript 5**
+- **Vite 7** - 빌드 도구 + 번들 분석 (rollup-plugin-visualizer)
+- **Tailwind CSS 3** - 스타일링 + 커스텀 디자인 토큰
+- **React Router DOM 6** - 라우팅 (Lazy Loading, Protected Routes)
+- **Vitest** - 단위/통합 테스트 (124+ 테스트 케이스)
+
+#### 주요 아키텍처 특징
+- **컴포넌트 기반 UI** - 재사용 가능한 디자인 시스템
+- **커스텀 훅** - 비즈니스 로직 분리 (15+ 커스텀 훅)
+- **Context + useReducer** - 예측 가능한 상태 관리
+- **접근성(a11y)** - ARIA, 포커스 트랩, 키보드 네비게이션
+- **오프라인 지원** - 캐시 전략, 오프라인 배너
+- **에러 핸들링** - Error Boundary, 토스트 알림, 복구 가이드
 
 ### Backend
 - **Supabase**
@@ -60,32 +68,90 @@
 ```
 src/
 ├── components/          # 재사용 컴포넌트
-│   ├── ui/             # 기본 UI (Button, Input, Card...)
+│   ├── ui/             # 기본 UI 컴포넌트
+│   │   ├── Button.tsx        # 버튼 (variant, size 지원)
+│   │   ├── Input.tsx         # 입력 필드 (유효성 검사 연동)
+│   │   ├── Card.tsx          # 카드 레이아웃
+│   │   ├── Badge.tsx         # 상태 표시 배지
+│   │   ├── Avatar.tsx        # 사용자 아바타
+│   │   ├── Tabs.tsx          # 탭 네비게이션
+│   │   ├── ProgressBar.tsx   # 진행 상태 표시
+│   │   ├── IconButton.tsx    # 접근성 아이콘 버튼
+│   │   ├── LoadingSpinner.tsx
+│   │   ├── SkeletonLoader.tsx
+│   │   ├── EmptyState.tsx
+│   │   ├── ErrorState.tsx
+│   │   ├── LazyImage.tsx     # 이미지 Lazy Loading
+│   │   └── index.ts          # Barrel export
+│   ├── layouts/        # 레이아웃 컴포넌트
+│   │   ├── EmployerLayout.tsx
+│   │   ├── WorkerLayout.tsx
+│   │   ├── PageHeader.tsx
+│   │   ├── ResponsiveContainer.tsx
+│   │   └── index.ts
+│   ├── icons/          # SVG 아이콘 컴포넌트
+│   ├── ErrorBoundary.tsx     # 전역 에러 핸들링
+│   ├── Toast.tsx             # 토스트 알림
+│   ├── ConfirmDialog.tsx     # 확인 다이얼로그
+│   ├── FocusTrap.tsx         # 포커스 트랩 (접근성)
+│   ├── OfflineBanner.tsx     # 오프라인 상태 표시
+│   ├── PageTransition.tsx    # 페이지 전환 애니메이션
+│   ├── ErrorRecoveryGuide.tsx
+│   ├── ProtectedRoute.tsx    # 인증 라우트 가드
+│   ├── ContractCard.tsx      # 계약서 카드
 │   ├── SignatureCanvas.tsx
 │   ├── ShareModal.tsx
 │   ├── ChatView.tsx
 │   ├── NotificationBell.tsx
-│   └── AllowanceCalculator.tsx
-├── contexts/           # React Context
-│   └── AuthContext.tsx
+│   ├── AllowanceCalculator.tsx
+│   └── index.ts
+├── contexts/           # React Context (useReducer 패턴)
+│   ├── AuthContext.tsx       # 인증 상태 관리
+│   └── ToastContext.tsx      # 토스트 알림 관리
 ├── hooks/              # Custom Hooks
-│   ├── useContracts.ts
-│   ├── useCredits.ts
-│   ├── useAIChat.ts
-│   ├── useContractGeneration.ts
-│   ├── useRealtime.ts
-│   └── useSwipe.ts
+│   ├── useAuth.ts            # 인증 관련
+│   ├── useContracts.ts       # 계약서 CRUD
+│   ├── useCredits.ts         # 크레딧 관리
+│   ├── useAIChat.ts          # AI 채팅
+│   ├── useRealtime.ts        # Supabase Realtime
+│   ├── useSwipe.ts           # 터치 스와이프
+│   ├── useResource.ts        # 제네릭 CRUD 훅
+│   ├── useOnlineStatus.ts    # 네트워크 상태
+│   ├── useOfflineCache.ts    # 오프라인 캐싱
+│   ├── useDebounce.ts        # 디바운스
+│   ├── useLocalStorage.ts    # 로컬 스토리지
+│   ├── useFormValidation.ts  # 폼 유효성 검사
+│   ├── useUnsavedChanges.ts  # 미저장 변경 감지
+│   ├── useSessionTimeout.ts  # 세션 타임아웃
+│   ├── usePrefetch.ts        # 데이터 프리페칭
+│   └── index.ts
+├── config/             # 설정 및 상수
+│   ├── constants.ts          # 전역 상수
+│   └── env.ts                # 환경 변수 타입
 ├── lib/                # 외부 라이브러리 설정
 │   └── supabase.ts
 ├── pages/              # 페이지 컴포넌트
 │   ├── employer/       # 사장님 페이지
 │   ├── worker/         # 알바생 페이지
 │   └── ...
+├── styles/             # 스타일 관련
+│   └── DESIGN_TOKENS.md      # 디자인 토큰 문서
 ├── types/              # TypeScript 타입 정의
-├── utils/              # 유틸리티 함수
-├── App.tsx             # 라우터 설정
+│   ├── index.ts              # 공통 타입
+│   ├── database.ts           # Supabase DB 타입 (자동 생성)
+│   └── env.d.ts              # 환경 변수 타입
+├── utils/              # 유틸리티 함수 (JSDoc 문서화)
+│   ├── index.ts              # 날짜, 통화, 문자열 포맷
+│   ├── errorMessages.ts      # 에러 메시지 한글화
+│   ├── security.ts           # 보안 유틸 (XSS 방지, 마스킹)
+│   └── logger.ts             # 로깅
+├── App.tsx             # 라우터 설정 (Lazy Loading)
 ├── main.tsx            # 앱 진입점
-└── index.css           # 전역 스타일
+└── index.css           # 전역 스타일 (CSS 변수)
+
+scripts/
+├── generate-component.js     # 컴포넌트 생성 스크립트
+└── ...
 
 supabase/
 ├── migrations/         # DB 스키마
@@ -155,6 +221,39 @@ npm run test
 
 # 테스트 커버리지
 npm run test:coverage
+
+# E2E 테스트 (Playwright)
+npm run test:e2e
+
+# E2E 테스트 UI 모드 (디버깅)
+npm run test:e2e:ui
+
+# 번들 분석
+npm run build:analyze
+```
+
+### 테스트 현황
+- ✅ **유틸리티 함수** - 날짜, 통화, 유효성 검사
+- ✅ **보안 유틸** - XSS 방지, 데이터 마스킹
+- ✅ **커스텀 훅** - useDebounce, useLocalStorage, useOnlineStatus
+- ✅ **UI 컴포넌트** - Button, Input, Card
+- ✅ **페이지 컴포넌트** - SelectRole, Splash, Onboarding
+- ✅ **E2E 테스트** - 인증, 네비게이션, 사장님/알바생 플로우
+
+## 🛠️ 개발 도구
+
+```bash
+# 컴포넌트 생성
+npm run generate:component MyComponent
+
+# 페이지 생성
+npm run generate:page MyPage
+
+# 훅 생성
+npm run generate:hook useMyHook
+
+# Supabase 타입 생성
+npm run generate:types
 ```
 
 ## 📄 라이선스

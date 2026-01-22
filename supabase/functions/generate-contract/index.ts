@@ -1,10 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeaders, handleCorsPreFlight, jsonResponse, errorResponse, ERROR_MESSAGES } from "../_shared/cors.ts";
+import { rateLimiters, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 interface ContractInput {
   businessSize: "under5" | "over5";
@@ -21,9 +18,12 @@ interface ContractInput {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
+
   // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return handleCorsPreFlight(origin);
   }
 
   try {
@@ -38,42 +38,58 @@ serve(async (req) => {
     // 사용자 인증 확인
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return errorResponse(ERROR_MESSAGES.UNAUTHORIZED, 401, origin);
     }
 
-    // 크레딧 확인
+    // Rate Limiting (AI 호출은 분당 5회 제한)
+    const rateLimitResult = rateLimiters.ai.check(user.id);
+    if (!rateLimitResult.allowed) {
+      return createRateLimitResponse(rateLimitResult, corsHeaders);
+    }
+
+    // 크레딧 확인 (total_used 포함)
     const { data: credits, error: creditsError } = await supabaseClient
       .from("user_credits")
-      .select("free_credits, paid_credits")
+      .select("free_credits, paid_credits, total_used")
       .eq("user_id", user.id)
       .single();
 
     if (creditsError || !credits) {
-      return new Response(JSON.stringify({ error: "Failed to check credits" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("Credits check error:", creditsError);
+      return errorResponse("크레딧 확인에 실패했습니다.", 500, origin);
     }
 
     const totalCredits = (credits.free_credits || 0) + (credits.paid_credits || 0);
     if (totalCredits < 1) {
-      return new Response(JSON.stringify({ error: "Insufficient credits" }), {
-        status: 402,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return errorResponse(ERROR_MESSAGES.INSUFFICIENT_CREDITS, 402, origin);
     }
 
     // 요청 데이터 파싱
     const input: ContractInput = await req.json();
 
+    // 입력 검증
+    if (!input.workerName?.trim()) {
+      return errorResponse("근로자명은 필수입니다.", 400, origin);
+    }
+    if (!input.workPlace?.trim()) {
+      return errorResponse("근무 장소는 필수입니다.", 400, origin);
+    }
+    if (!input.hourlyWage || input.hourlyWage < 0) {
+      return errorResponse("올바른 시급을 입력해주세요.", 400, origin);
+    }
+
+    // OpenAI API Key 확인
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiApiKey) {
+      console.error("OPENAI_API_KEY is not configured");
+      return errorResponse("AI 서비스가 구성되지 않았습니다.", 500, origin);
+    }
+
     // OpenAI API 호출하여 계약서 생성
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${Deno.env.get("OPENAI_API_KEY")}`,
+        "Authorization": `Bearer ${openaiApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -106,8 +122,29 @@ serve(async (req) => {
       }),
     });
 
+    // OpenAI API 에러 핸들링
+    if (!openaiResponse.ok) {
+      const errorData = await openaiResponse.json().catch(() => ({}));
+      console.error("OpenAI API Error:", openaiResponse.status, errorData);
+      
+      if (openaiResponse.status === 429) {
+        return errorResponse(ERROR_MESSAGES.AI_RATE_LIMITED, 503, origin);
+      }
+      
+      if (openaiResponse.status === 401) {
+        return errorResponse("AI 서비스 인증에 실패했습니다.", 500, origin);
+      }
+      
+      return errorResponse(ERROR_MESSAGES.AI_ERROR, 500, origin);
+    }
+
     const aiResult = await openaiResponse.json();
-    const generatedContent = aiResult.choices?.[0]?.message?.content || "";
+    const generatedContent = aiResult.choices?.[0]?.message?.content;
+    
+    if (!generatedContent) {
+      console.error("Empty response from OpenAI:", aiResult);
+      return errorResponse("계약서 생성에 실패했습니다. 다시 시도해주세요.", 500, origin);
+    }
 
     // 계약서 저장
     const { data: contract, error: insertError } = await supabaseClient
@@ -132,30 +169,30 @@ serve(async (req) => {
       .single();
 
     if (insertError) {
-      return new Response(JSON.stringify({ error: "Failed to save contract" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("Contract save error:", insertError);
+      return errorResponse("계약서 저장에 실패했습니다.", 500, origin);
     }
 
-    // 크레딧 차감
+    // 크레딧 차감 (무료 크레딧 먼저 사용)
     const updateField = credits.free_credits > 0 ? "free_credits" : "paid_credits";
-    await supabaseClient
+    const currentValue = updateField === "free_credits" ? credits.free_credits : credits.paid_credits;
+    
+    const { error: creditUpdateError } = await supabaseClient
       .from("user_credits")
       .update({
-        [updateField]: credits[updateField] - 1,
-        total_used: (credits as any).total_used + 1,
+        [updateField]: currentValue - 1,
+        total_used: (credits.total_used || 0) + 1,
       })
       .eq("user_id", user.id);
 
-    return new Response(JSON.stringify({ contract, generatedContent }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    if (creditUpdateError) {
+      console.error("Credit update error:", creditUpdateError);
+      // 계약서는 이미 생성되었으므로, 에러 로그만 남기고 성공 응답
+    }
+
+    return jsonResponse({ contract, generatedContent }, 200, origin);
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("Unexpected error:", error);
+    return errorResponse(ERROR_MESSAGES.INTERNAL_ERROR, 500, origin);
   }
 });
