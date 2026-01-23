@@ -9,9 +9,9 @@ import OfflineBanner from "./components/OfflineBanner";
 const Splash = lazy(() => import("./pages/Splash"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Login = lazy(() => import("./pages/Login"));
-const Signup = lazy(() => import("./pages/Signup"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+// Signup 페이지 제거됨 - 소셜 로그인만 사용
+// ForgotPassword/ResetPassword 페이지 제거됨 - 소셜 로그인만 사용
+const CompleteProfile = lazy(() => import("./pages/CompleteProfile"));
 const SelectRole = lazy(() => import("./pages/SelectRole"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
@@ -75,13 +75,12 @@ function App() {
           <Route element={<GuestRoute />}>
             <Route path="/onboarding" element={<SuspenseWrapper><Onboarding /></SuspenseWrapper>} />
             <Route path="/login" element={<SuspenseWrapper><Login /></SuspenseWrapper>} />
-            <Route path="/signup" element={<SuspenseWrapper><Signup /></SuspenseWrapper>} />
-            <Route path="/forgot-password" element={<SuspenseWrapper><ForgotPassword /></SuspenseWrapper>} />
-            <Route path="/reset-password" element={<SuspenseWrapper><ResetPassword /></SuspenseWrapper>} />
+            {/* Signup 페이지 제거됨 - 소셜 로그인만 사용 */}
           </Route>
 
           {/* Protected routes - 로그인 필요 */}
           <Route element={<ProtectedRoute />}>
+            <Route path="/complete-profile" element={<SuspenseWrapper><CompleteProfile /></SuspenseWrapper>} />
             <Route path="/select-role" element={<SuspenseWrapper><SelectRole /></SuspenseWrapper>} />
             <Route path="/profile" element={<SuspenseWrapper><Profile /></SuspenseWrapper>} />
             <Route path="/pricing" element={<SuspenseWrapper><Pricing /></SuspenseWrapper>} />

@@ -25,6 +25,8 @@ type AuthAction =
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "CLEAR_ERROR" };
 
+type SocialProvider = "google" | "kakao";
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -33,8 +35,7 @@ interface AuthContextType {
   isGuest: boolean;
   error: string | null;
   supabase: typeof supabase;
-  signUp: (email: string, password: string, metadata?: { name?: string; phone?: string }) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signInWithSocial: (provider: SocialProvider) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
@@ -238,20 +239,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [fetchProfile]);
 
-  // 회원가입
-  const signUp = useCallback(async (
-    email: string,
-    password: string,
-    metadata?: { name?: string; phone?: string }
+  // 소셜 로그인 (Google/Kakao)
+  const signInWithSocial = useCallback(async (
+    provider: SocialProvider
   ): Promise<{ error: Error | null }> => {
     try {
       dispatch({ type: "AUTH_LOADING" });
 
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
+      // 배포 환경에서는 Vercel URL 사용, 개발 환경에서는 localhost 사용
+      const redirectUrl = import.meta.env.PROD
+        ? `${window.location.origin}/select-role`
+        : `${window.location.origin}/select-role`;
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
         options: {
-          data: metadata,
+          redirectTo: redirectUrl,
+          queryParams: provider === "kakao" ? {
+            // 카카오 로그인 시 필요한 추가 파라미터
+            prompt: "login",
+          } : undefined,
         },
       });
 
@@ -260,32 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: new Error(error.message) };
       }
 
-      return { error: null };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "회원가입 실패";
-      dispatch({ type: "AUTH_ERROR", payload: errorMessage });
-      return { error: error as Error };
-    }
-  }, []);
-
-  // 로그인
-  const signIn = useCallback(async (
-    email: string,
-    password: string
-  ): Promise<{ error: Error | null }> => {
-    try {
-      dispatch({ type: "AUTH_LOADING" });
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        dispatch({ type: "AUTH_ERROR", payload: error.message });
-        return { error: new Error(error.message) };
-      }
-
+      // OAuth는 리다이렉트되므로 여기서는 에러가 없으면 성공
       return { error: null };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "로그인 실패";
@@ -354,8 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isGuest,
     error: state.error,
     supabase,
-    signUp,
-    signIn,
+    signInWithSocial,
     signOut,
     updateProfile,
     refreshProfile,
@@ -381,6 +362,6 @@ export function useAuthState() {
 
 // 인증 액션만 필요한 경우 사용
 export function useAuthActions() {
-  const { signUp, signIn, signOut, updateProfile, refreshProfile, clearError } = useAuth();
-  return { signUp, signIn, signOut, updateProfile, refreshProfile, clearError };
+  const { signInWithSocial, signOut, updateProfile, refreshProfile, clearError } = useAuth();
+  return { signInWithSocial, signOut, updateProfile, refreshProfile, clearError };
 }

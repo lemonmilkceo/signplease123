@@ -7,6 +7,8 @@ interface ProtectedRouteProps {
   requiredRole?: "employer" | "worker";
   /** 로그인 페이지 경로 */
   loginPath?: string;
+  /** 프로필 완성 페이지 경로 */
+  completeProfilePath?: string;
   /** 역할 선택 페이지 경로 */
   roleSelectPath?: string;
 }
@@ -28,6 +30,7 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({
   requiredRole,
   loginPath = "/login",
+  completeProfilePath = "/complete-profile",
   roleSelectPath = "/select-role",
 }: ProtectedRouteProps) {
   const { user, profile, isLoading } = useAuth();
@@ -43,15 +46,25 @@ export function ProtectedRoute({
     return <Navigate to={loginPath} state={{ from: location }} replace />;
   }
 
-  // 로그인했지만 역할 미설정 → 역할 선택 페이지로
-  if (!profile?.role && requiredRole) {
-    return <Navigate to={roleSelectPath} state={{ from: location }} replace />;
-  }
+  // 프로필 완성 페이지나 역할 선택 페이지는 추가 리다이렉트 없이 통과
+  const isProfileSetupRoute = [completeProfilePath, roleSelectPath].includes(location.pathname);
+  
+  if (!isProfileSetupRoute) {
+    // 소셜 로그인 후 프로필 미완성 (전화번호 없음) → 프로필 완성 페이지로
+    if (!profile?.phone || !profile?.name) {
+      return <Navigate to={completeProfilePath} state={{ from: location }} replace />;
+    }
 
-  // 역할 불일치 → 해당 역할 대시보드로 리다이렉트
-  if (requiredRole && profile?.role !== requiredRole) {
-    const redirectPath = profile?.role === "employer" ? "/employer" : "/worker";
-    return <Navigate to={redirectPath} replace />;
+    // 로그인했지만 역할 미설정 → 역할 선택 페이지로
+    if (!profile?.role && requiredRole) {
+      return <Navigate to={roleSelectPath} state={{ from: location }} replace />;
+    }
+
+    // 역할 불일치 → 해당 역할 대시보드로 리다이렉트
+    if (requiredRole && profile?.role !== requiredRole) {
+      const redirectPath = profile?.role === "employer" ? "/employer" : "/worker";
+      return <Navigate to={redirectPath} replace />;
+    }
   }
 
   return <Outlet />;
@@ -59,7 +72,7 @@ export function ProtectedRoute({
 
 /**
  * 게스트 전용 라우트 (로그인하지 않은 사용자만 접근 가능)
- * 로그인, 회원가입 페이지 등에 사용
+ * 로그인 페이지 등에 사용
  */
 export function GuestRoute() {
   const { user, profile, isLoading } = useAuth();
@@ -69,7 +82,7 @@ export function GuestRoute() {
     return <LoadingState message="확인 중..." />;
   }
 
-  // 이미 로그인된 경우 → 역할에 따라 리다이렉트
+  // 이미 로그인된 경우 → 프로필/역할에 따라 리다이렉트
   if (user) {
     const from = (location.state as { from?: Location })?.from?.pathname;
     
@@ -77,11 +90,18 @@ export function GuestRoute() {
       return <Navigate to={from} replace />;
     }
 
-    if (profile?.role) {
-      return <Navigate to={profile.role === "employer" ? "/employer" : "/worker"} replace />;
+    // 프로필 미완성 (소셜 로그인 직후)
+    if (!profile?.phone || !profile?.name) {
+      return <Navigate to="/complete-profile" replace />;
     }
-    
-    return <Navigate to="/select-role" replace />;
+
+    // 역할 미설정
+    if (!profile?.role) {
+      return <Navigate to="/select-role" replace />;
+    }
+
+    // 역할에 따라 대시보드로
+    return <Navigate to={profile.role === "employer" ? "/employer" : "/worker"} replace />;
   }
 
   return <Outlet />;

@@ -1,19 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Input } from "../components/ui";
 import { useAuth } from "../contexts/AuthContext";
-import { useToast } from "../components/Toast";
-import { ChevronLeftIcon, EyeIcon, EyeOffIcon } from "../components/icons";
+import { ChevronLeftIcon, GoogleIcon, KakaoIcon } from "../components/icons";
 import { translateAuthError, logger } from "../utils";
 
+/**
+ * 소셜 로그인 페이지 (Google / Kakao OAuth)
+ * - 이메일/비밀번호 로그인 없이 소셜 로그인만 지원
+ */
 function Login() {
   const navigate = useNavigate();
-  const { signIn, profile, user, isLoading: authLoading } = useAuth();
-  const { toast: _toast } = useToast();
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const { signInWithSocial, profile, user, isLoading: authLoading } = useAuth();
+  const [isLoading, setIsLoading] = useState<"google" | "kakao" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // 이미 로그인된 상태면 리다이렉트
@@ -27,140 +25,126 @@ function Login() {
     }
   }, [user, profile, authLoading, navigate]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const handleSocialLogin = async (provider: "google" | "kakao") => {
+    setIsLoading(provider);
     setError(null);
     
     try {
-      // 전화번호인지 이메일인지 판별
-      const isPhone = /^[0-9-]+$/.test(identifier.replace(/\s/g, ""));
-      const email = isPhone 
-        ? `${identifier.replace(/\D/g, "")}@signplease.app`
-        : identifier.trim();
+      logger.action("social_login_attempt", { provider });
       
-      logger.action("login_attempt", { isPhone });
-      
-      const { error: authError } = await signIn(email, password);
+      const { error: authError } = await signInWithSocial(provider);
 
       if (authError) {
-        logger.warn("Login failed", authError.message);
+        logger.warn("Social login failed", authError.message);
         setError(translateAuthError(authError.message));
-        return;
+        setIsLoading(null);
       }
-
-      logger.action("login_success");
-      // AuthContext의 onAuthStateChange가 처리하므로 여기서는 따로 리다이렉트 불필요
-      // useEffect에서 자동으로 리다이렉트됨
+      // OAuth는 리다이렉트되므로 성공 시 여기에 도달하지 않음
     } catch (err) {
-      logger.error("Login error", err);
+      logger.error("Social login error", err);
       setError("로그인 중 오류가 발생했습니다");
-    } finally {
-      setIsLoading(false);
+      setIsLoading(null);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* 헤더 - 뒤로가기 + 타이틀 */}
-      <header className="flex items-center gap-3 p-4 border-b border-border">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex flex-col">
+      {/* 헤더 */}
+      <header className="flex items-center gap-3 p-4">
         <button 
           onClick={() => navigate("/onboarding")}
           aria-label="뒤로 가기"
-          className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronLeftIcon className="w-5 h-5 text-foreground" />
         </button>
-        <h1 className="text-heading text-foreground">로그인</h1>
       </header>
 
-      {/* 폼 영역 */}
-      <div className="flex-1 p-6 flex flex-col">
+      {/* 메인 컨텐츠 */}
+      <div className="flex-1 px-6 flex flex-col justify-center">
         <div className="animate-slide-up opacity-0" style={{ animationDelay: "0.1s", animationFillMode: "forwards" }}>
-          {/* 환영 메시지 */}
-          <h2 className="text-title text-foreground mb-2">다시 만나서 반가워요!</h2>
-          <p className="text-body text-muted-foreground mb-8">계정에 로그인하세요</p>
-          
-          <form onSubmit={handleLogin} className="space-y-4">
-            {/* 에러 메시지 */}
-            {error && (
-              <div 
-                role="alert"
-                aria-live="assertive"
-                className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-caption"
-              >
-                {error}
-              </div>
-            )}
-            
-            {/* 전화번호/이메일 입력 */}
-            <Input
-              type="text"
-              label="전화번호 또는 이메일"
-              placeholder="010-1234-5678 또는 example@email.com"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              required
-            />
-            
-            {/* 비밀번호 입력 + 토글 */}
-            <div className="relative">
-              <Input
-                type={showPassword ? "text" : "password"}
-                label="비밀번호"
-                placeholder="비밀번호를 입력하세요"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
-                aria-pressed={showPassword}
-                className="absolute right-4 top-[38px] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-              >
-                {showPassword ? <EyeOffIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
-              </button>
+          {/* 로고 및 환영 메시지 */}
+          <div className="text-center mb-12">
+            <div className="w-20 h-20 bg-gradient-to-br from-primary to-primary/80 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary/20">
+              <span className="text-4xl">📝</span>
             </div>
-            
-            {/* 비밀번호 찾기 (로그인 유지 제거) */}
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => navigate("/forgot-password")}
-                className="text-caption text-primary hover:underline"
-              >
-                비밀번호 찾기
-              </button>
-            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-2">싸인플리즈</h1>
+            <p className="text-body text-muted-foreground">
+              간편하게 로그인하고 시작하세요
+            </p>
+          </div>
 
-            {/* 로그인 버튼 */}
-            <div className="pt-4">
-              <Button 
-                type="submit" 
-                variant="primary" 
-                fullWidth 
-                disabled={isLoading || !identifier || !password}
-              >
-                {isLoading ? "로그인 중..." : "로그인"}
-              </Button>
-            </div>
-          </form>
-        </div>
-
-        {/* 하단 회원가입 링크 */}
-        <div className="mt-auto pt-8 text-center animate-fade-in" style={{ animationDelay: "0.3s", animationFillMode: "forwards" }}>
-          <p className="text-caption text-muted-foreground">
-            계정이 없으신가요?{" "}
-            <button 
-              onClick={() => navigate("/signup")}
-              className="text-primary font-medium hover:underline"
+          {/* 에러 메시지 */}
+          {error && (
+            <div 
+              role="alert"
+              aria-live="assertive"
+              className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm text-center"
             >
-              회원가입
+              {error}
+            </div>
+          )}
+
+          {/* 소셜 로그인 버튼들 */}
+          <div className="space-y-3">
+            {/* Google 로그인 */}
+            <button
+              onClick={() => handleSocialLogin("google")}
+              disabled={isLoading !== null}
+              className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white border border-gray-200 rounded-xl text-gray-700 font-medium shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {isLoading === "google" ? (
+                <div className="w-5 h-5 border-2 border-gray-300 border-t-primary rounded-full animate-spin" />
+              ) : (
+                <GoogleIcon className="w-5 h-5" />
+              )}
+              <span>Google로 계속하기</span>
             </button>
+
+            {/* Kakao 로그인 */}
+            <button
+              onClick={() => handleSocialLogin("kakao")}
+              disabled={isLoading !== null}
+              className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-[#FEE500] border border-[#FEE500] rounded-xl text-[#191919] font-medium shadow-sm hover:shadow-md hover:bg-[#FADA0A] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {isLoading === "kakao" ? (
+                <div className="w-5 h-5 border-2 border-[#191919]/30 border-t-[#191919] rounded-full animate-spin" />
+              ) : (
+                <KakaoIcon className="w-5 h-5" />
+              )}
+              <span>카카오로 계속하기</span>
+            </button>
+          </div>
+
+          {/* 안내 문구 */}
+          <p className="mt-8 text-center text-xs text-muted-foreground leading-relaxed">
+            로그인 시{" "}
+            <button 
+              onClick={() => navigate("/terms")} 
+              className="underline hover:text-primary transition-colors"
+            >
+              이용약관
+            </button>
+            {" "}및{" "}
+            <button 
+              onClick={() => navigate("/privacy")} 
+              className="underline hover:text-primary transition-colors"
+            >
+              개인정보처리방침
+            </button>
+            에 동의합니다
           </p>
         </div>
+      </div>
+
+      {/* 하단 둘러보기 링크 */}
+      <div className="p-6 text-center animate-fade-in" style={{ animationDelay: "0.3s", animationFillMode: "forwards" }}>
+        <button 
+          onClick={() => navigate("/employer")}
+          className="text-caption text-muted-foreground hover:text-primary transition-colors"
+        >
+          먼저 둘러볼게요 →
+        </button>
       </div>
     </div>
   );
